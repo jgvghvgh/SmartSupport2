@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.heima.smartticket.Mapper.TicketMapper">
+
+    <select id="getTickets" resultType="com.heima.smartcommon.VO.TicketCreateVO">
+        SELECT
+        id,
+        title,
+        status,
+        creator_id AS creatorId,
+        create_time AS createTime,
+        update_time AS updateTime
+        FROM ticket
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+</mapper>

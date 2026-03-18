@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: smart-auth
+  cloud:
+    nacos:
+      discovery:
+        ip: 26.124.231.76
+        server-addr: 26.124.231.76:8848   # Nacos 地址
+        username: nacos               # 如果 Nacos 设置了用户名密码
+        password: nacos
+        health-check-enabled: true
+      config:
+        server-addr: 26.124.231.76:8848
+        file-extension: yml
+        name: smart-auth   # Data ID，不带后缀
+        group: DEFAULT_GROUP

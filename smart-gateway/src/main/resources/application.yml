@@ -1,0 +1,73 @@
+server:
+  port: 8080
+spring:
+  config:
+    import: "optional:classpath:bootstrap.yml"
+  cloud:
+    gateway:
+          discovery:
+            locator:
+              enabled: true # 启用从 nacos 自动发现服务
+              lower-case-service-id: true
+          routes:
+            # 用户服务
+            - id: user-service
+              uri: lb://smart-auth
+              predicates:
+                - Path=/api/user/**
+
+            # 工单服务
+            - id: ticket-service
+              uri: lb://smart-ticket
+              predicates:
+                - Path=/api/ticket/**
+
+            # 消息通知服务
+            - id: message-service
+              uri: lb://smart-message
+              predicates:
+                - Path=/api/message/**
+
+            # AI 服务
+            - id: ai-service
+              uri: lb://smart-ai
+              predicates:
+                - Path=/api/ai/**
+            - id: rate_limited_route  # 路由的 ID
+              uri: http://localhost:8081  # 目标服务的 URI
+              predicates:
+                        - Path=/api/**  # 限制 /api/** 路径下的请求
+              filters:
+                        - name: RequestRateLimiter  # 使用限流过滤器
+                          args:
+                            # 每秒的请求速率：每秒 10 次请求
+                            redis-rate-limiter.replenishRate=10
+                            # 突发容量：允许的最大并发请求数，每分钟最多 100 次请求
+                            redis-rate-limiter.burstCapacity=100
+                            # 每个请求消耗 1 个令牌
+                            redis-rate-limiter.requestedTokens=1
+                            # 可选：基于 IP 进行限流
+                            redis-rate-limiter.key-resolver=org.springframework.cloud.gateway.support.DefaultKeyResolver
+
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                allowCredentials: true
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: ALWAYS
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.loadbalancer: DEBUG
+    com.alibaba.nacos: DEBUG

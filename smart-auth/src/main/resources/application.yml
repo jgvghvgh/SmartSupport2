@@ -1,0 +1,29 @@
+server:
+  port: 8082
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: Ov23lixqIG2RQeikfrCD
+            client-secret: 2ce67a9bcd1949f0745ee1e92124334b4c4ce948
+            client-name: GitHub
+            provider: github
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/github"
+            scope:
+              - read:user
+              - user:email
+        provider:
+          github:
+            authorization-uri: https://github.com/login/oauth/authorize
+            token-uri: https://github.com/login/oauth/access_token
+            user-info-uri: https://api.github.com/user
+            user-name-attribute: id
