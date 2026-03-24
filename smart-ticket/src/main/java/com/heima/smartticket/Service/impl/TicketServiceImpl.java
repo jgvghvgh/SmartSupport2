@@ -9,6 +9,7 @@ import com.heima.smartcommon.Exception.BusinessException;
 import com.heima.smartcommon.Result.CommonResult;
 import com.heima.smartcommon.Result.PageResult;
 import com.heima.smartcommon.VO.TicketCreateVO;
+import com.heima.smartticket.MQ.FirstUserMessageEvent;
 import com.heima.smartticket.MQ.CommentCreatedEvent;
 import com.heima.smartticket.Mapper.CommonUserMapper;
 import com.heima.smartticket.Mapper.OutboxMessageMapper;
@@ -109,6 +110,20 @@ public class TicketServiceImpl implements TicketService {
         if(ticketMessage.getContent()==null){
             throw new BusinessException("内容不能为空");
         }
+
+        Ticket ticket = ticketMapper.findById(ticketMessage.getTicketId());
+        if (ticket == null) {
+            throw new BusinessException("工单不存在");
+        }
+
+        // B：用户首次 addMessage 发消息时触发 AI 自动回复
+        Long msgCount = ticketMessageMapper.countByTicketId(ticketMessage.getTicketId());
+        boolean isFirstUserMessage =
+                msgCount != null
+                        && msgCount == 0
+                        && ticketMessage.getSenderId() != null
+                        && ticketMessage.getSenderId().equals(ticket.getUserId());
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String role = authentication.getAuthorities()
                 .stream()
@@ -117,6 +132,12 @@ public class TicketServiceImpl implements TicketService {
                 .orElse(null);
         TicketMessage message = new TicketMessage(null,ticketMessage.getTicketId(),ticketMessage.getSenderId(),role,ticketMessage.getContent(),(short) 0,null);
         int messageid = addComment(message);
+
+        if (isFirstUserMessage) {
+            eventPublisher.publishEvent(
+                    new FirstUserMessageEvent(this, ticketMessage.getTicketId(), ticketMessage.getContent())
+            );
+        }
         return CommonResult.success(messageid);
     }
 
@@ -147,6 +168,8 @@ public class TicketServiceImpl implements TicketService {
             return CommonResult.error("没有可用的客服");
         }
        ticketMapper.insertAssignId( ticketId, agentId);
+        //通过websocket进行提示客服已经被分配
+
 
         return CommonResult.success("指派成功");
     }

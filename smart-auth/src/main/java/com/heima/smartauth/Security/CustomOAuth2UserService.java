@@ -30,16 +30,13 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(userRequest);
         String registrationId = userRequest.getClientRegistration().getRegistrationId();
-
         if (!"github".equals(registrationId)) {
             throw new OAuth2AuthenticationException("Unsupported provider: " + registrationId);
         }
-
         Map<String, Object> attributes = oAuth2User.getAttributes();
         String githubId = String.valueOf(attributes.get("id"));
         String username = (String) attributes.get("login");
         String avatar = (String) attributes.get("avatar_url");
-
         // 查询用户是否存在
         SysUserAuth existingAuth = userService.findByGithubId(githubId);
         AuthUser   user;
@@ -55,7 +52,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         } else {
             user = userService.findById(existingAuth.getUserId());
         }
-
         return new DefaultOAuth2User(
                 Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
                 attributes,

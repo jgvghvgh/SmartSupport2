@@ -2,6 +2,7 @@ package com.heima.smartai.AiService;
 
 import com.heima.smartai.Config.AIConfig;
 import com.heima.smartai.Config.AiClient;
+import com.heima.smartai.intent.IntentClassifierService;
 import com.heima.smartai.client.TicketRemoteClient;
 import com.heima.smartai.mapper.AiMapper;
 import com.heima.smartai.model.AiAnalysisResult;
@@ -33,11 +34,12 @@ public class Aiserviceimpl implements AiService{
     @Autowired
     private TicketRemoteClient ticketRemoteClient;
     @Autowired
-    private AIConfig aiConfig;
-    @Autowired
     private AiMapper ticketSummaryMapper;
     @Autowired
     private QueryRewriteService queryRewriteService;
+
+    @Autowired
+    private IntentClassifierService intentClassifierService;
 
     @Autowired
     private AiClient aiClient;
@@ -47,7 +49,6 @@ public class Aiserviceimpl implements AiService{
 
     @Autowired
     private RerankService rerankService;
-    private final RestTemplate restTemplate = new RestTemplate();
     @Override
     public AiAnalysisResult chat(String message, String ticketId) {
         //  1. 获取工单信息
@@ -56,15 +57,35 @@ public class Aiserviceimpl implements AiService{
             throw new RuntimeException("Ticket not found: " + ticketId);
         }
         TicketContent ticket =(TicketContent) result.getData();
-        String question = ticket.getContent();
-        //进行简单路由
-        {
+        // 优先使用用户首次 addMessage 内容；兜底使用工单描述
+        String question = (message == null || message.isBlank())
+                ? ticket.getContent()
+                : message;
 
+        // 2 意图分类分流（LLM + 分类缓存 + 分类限流）
+        IntentClassifierService.IntentResult intent =
+                intentClassifierService.classify(question, ticket.getSenderId());
 
+        // 识别失败：直接返回兜底文案
+        if (!intent.ok) {
+            AiAnalysisResult fallback = new AiAnalysisResult("意图识别失败", "请客服补充/请重新描述");
+            saveSummary(ticketId, fallback);
+            return fallback;
         }
-        // 1 QueryRewrite
-        String rewriteQuery =
-                queryRewriteService.rewrite(question);
+
+        if ("NEED_MORE_INFO".equalsIgnoreCase(intent.intent)) {
+            AiAnalysisResult fallback =
+                    new AiAnalysisResult(intent.reason, "请客服补充/请重新描述");
+            saveSummary(ticketId, fallback);
+            return fallback;
+        }
+
+        if("OTHER".equalsIgnoreCase(intent.intent)){
+
+            return chat(message, ticketId);
+        }
+        // 3 QueryRewrite
+        String rewriteQuery = queryRewriteService.rewrite(question);
 
         // 2 Vector Search (embedding + search)
         List<String> docs =
@@ -74,22 +95,17 @@ public class Aiserviceimpl implements AiService{
         List<String> topDocs =
                 rerankService.rerank(rewriteQuery,docs);
 
-        // 4 Prompt
-        String prompt =
-                PromptBuilder.build(question,topDocs);
+        // 4 Prompt（根据意图做路由/差异化提示）
+        String prompt = "FAQ".equalsIgnoreCase(intent.intent)
+                ? PromptBuilder.build(question, topDocs)
+                : PromptBuilder.buildCautious(question, topDocs);
 
         // 5 AI
         List<Map<String,Object>> messages =
                 buildMessages(prompt);
         AiAnalysisResult analysisResult = aiClient.chat(messages);
 
-        //  3. 保存结果到数据库
-        TicketSummary summary = new TicketSummary();
-        summary.setTicketId(Long.valueOf(ticketId));
-        summary.setAiSummary(formatAiSummary(analysisResult));
-        summary.setSatisfactionScore((short) 0); // 默认 0，后续用户可打分
-        summary.setCreatedAt(LocalDateTime.now());
-        ticketSummaryMapper.insert(summary);
+        saveSummary(ticketId, analysisResult);
 
         return analysisResult;
     }
@@ -101,6 +117,17 @@ public class Aiserviceimpl implements AiService{
         return "【问题分析】" + result.getProblemAnalysis() + "\n\n" +
                 "【参考回复】" + result.getReferenceReply();
     }
+
+    private void saveSummary(String ticketId, AiAnalysisResult result) {
+        // 保存结果到数据库（用于面试讲“智能客服闭环”）
+        TicketSummary summary = new TicketSummary();
+        summary.setTicketId(Long.valueOf(ticketId));
+        summary.setAiSummary(formatAiSummary(result));
+        summary.setSatisfactionScore((short) 0); // 默认 0，后续用户可打分
+        summary.setCreatedAt(LocalDateTime.now());
+        ticketSummaryMapper.insert(summary);
+    }
+
     private List<Map<String,Object>> buildMessages(String prompt){
 
         List<Map<String,Object>> messages =
