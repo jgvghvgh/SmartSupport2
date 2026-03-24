@@ -36,4 +36,8 @@ public class WebSocketUserRegistry {
     public boolean isOnline(Long userId) {
         return redisTemplate.hasKey("online:user:" + userId);
     }
+
+    public boolean hasUser(Long userId) {
+        return sessions.containsKey(userId);
+    }
 }

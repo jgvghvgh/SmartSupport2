@@ -20,4 +20,6 @@ public interface OutboxMessageMapper {
     void incrementRetry(int id);
     @Update("update outbox_message set status = #{failed} where id = #{id}")
     void updateStatus(int id, String failed);
+    @Update("update outbox_message set status = 'FAILED' where id = #{id}")
+    void markAsFailed(int id);
 }

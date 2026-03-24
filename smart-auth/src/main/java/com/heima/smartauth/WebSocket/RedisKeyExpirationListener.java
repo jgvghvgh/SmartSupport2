@@ -28,7 +28,7 @@ public class RedisKeyExpirationListener
                 Long.valueOf(key.split(":")[2]);
             // 从负载表删除
             redisTemplate.opsForZSet()
-                    .remove("cs:load", csId.toString());
+                    .remove("agent:load", csId.toString());
 
             System.out.println("客服下线："+csId);
         }

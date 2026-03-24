@@ -59,7 +59,9 @@ public class WebSocketServer extends TextWebSocketHandler {
 
         registry.removeUser(userId);
 
-        redisTemplate.delete("online:user:" + userId);
+        String role = getrole(session);
+        String key = "online:"+role +":"+ userId;
+        redisTemplate.delete(key);
 
         System.out.println("用户 " + userId + " 下线");
     }
