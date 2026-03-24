@@ -36,8 +36,8 @@ public class WebSocketServer extends TextWebSocketHandler {
         // Redis key
 
         String role= getrole(session);
-        String key = "online:"+role +":"+ userId;
-        if(role.equals("AGENT")){
+        String key = "online:" + role.toLowerCase() + ":" + userId;
+        if(role.equalsIgnoreCase("AGENT")){
             redisTemplate.opsForZSet()
                     .add("agent:load", userId.toString(), 0);
         }
@@ -60,7 +60,7 @@ public class WebSocketServer extends TextWebSocketHandler {
         registry.removeUser(userId);
 
         String role = getrole(session);
-        String key = "online:"+role +":"+ userId;
+        String key = "online:" + role.toLowerCase() + ":" + userId;
         redisTemplate.delete(key);
 
         // 如果是AGENT，从负载集合中移除
@@ -116,7 +116,7 @@ public class WebSocketServer extends TextWebSocketHandler {
         }
 
         // 先查找看redis用户表是否存在
-        String key = "online:" + role + ":" + userId;
+        String key = "online:" + role.toLowerCase() + ":" + userId;
         if (redisTemplate.opsForValue().get(key) == null) {
             // 不存在重新建立在线
             String connectionId = UUID.randomUUID().toString();
@@ -126,7 +126,7 @@ public class WebSocketServer extends TextWebSocketHandler {
                     60,
                     TimeUnit.SECONDS
             );
-            if (role.equals("AGENT")) {
+            if (role.equalsIgnoreCase("AGENT")) {
                 redisTemplate.opsForZSet()
                         .add("agent:load", userId.toString(), 0);
             }

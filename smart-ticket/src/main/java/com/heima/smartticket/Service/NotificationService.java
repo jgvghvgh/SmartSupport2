@@ -26,4 +26,14 @@ public class NotificationService {
             System.out.println("用户 " + userId + " 离线，暂存消息");
         }
     }
+
+    public void notifyAgent(Long agentId, String message) {
+        // 判断客服是否在线，通过redis在线表判断
+        if (redisTemplate.hasKey("online:agent:" + agentId)) {
+            publisher.publishMessage(agentId, message);
+        } else {
+            // 客服离线可扩展为：保存数据库或发送其他通知
+            System.out.println("客服 " + agentId + " 离线，暂存消息");
+        }
+    }
 }
