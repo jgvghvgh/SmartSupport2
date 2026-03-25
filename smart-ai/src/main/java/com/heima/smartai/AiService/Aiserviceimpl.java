@@ -6,11 +6,9 @@ import com.heima.smartai.cache.CacheWarmupService;
 import com.heima.smartai.cache.RetrievalCacheService;
 import com.heima.smartai.client.TicketRemoteClient;
 import com.heima.smartai.intent.IntentClassifierService;
-import com.heima.smartai.mapper.AiMapper;
 import com.heima.smartai.model.AiAnalysisResult;
 import com.heima.smartai.model.Message;
 import com.heima.smartai.model.TicketContent;
-import com.heima.smartai.model.TicketSummary;
 import com.heima.smartai.rag.PromptBuilder;
 import com.heima.smartai.rag.QueryRewriteService;
 import com.heima.smartai.rag.RerankService;
@@ -21,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -34,9 +31,6 @@ public class AiServiceImpl implements AiService {
 
     @Autowired
     private TicketRemoteClient ticketRemoteClient;
-
-    @Autowired
-    private AiMapper ticketSummaryMapper;
 
     @Autowired
     private IntentClassifierService intentClassifierService;
@@ -232,11 +226,7 @@ public class AiServiceImpl implements AiService {
     }
 
     private void saveSummary(String ticketId, AiAnalysisResult result) {
-        TicketSummary summary = new TicketSummary();
-        summary.setTicketId(Long.valueOf(ticketId));
-        summary.setAiSummary("【问题分析】" + result.getProblemAnalysis() + "\n\n" + "【参考回复】" + result.getReferenceReply());
-        summary.setSatisfactionScore((short) 0);
-        summary.setCreatedAt(LocalDateTime.now());
-        ticketSummaryMapper.insert(summary);
+        String content = "【问题分析】" + result.getProblemAnalysis() + "\n\n" + "【参考回复】" + result.getReferenceReply();
+        ticketRemoteClient.saveAiMessage(Long.valueOf(ticketId), content);
     }
 }
