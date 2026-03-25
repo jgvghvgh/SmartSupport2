@@ -38,9 +38,10 @@ public class QueryRewriteService {
             return question; // 兜底返回原始问题
         }
         // 取 problemAnalysis 部分作为改写结果
-        String[] parts = aiText.split(“解决建议[:：]”);
+
+        String[] parts = aiText.split("解决建议[:：]");
         return parts.length > 0
-                ? parts[0].replace(“问题分析：”, “”).trim()
+                ? parts[0].replace("问题分析：", "").trim()
                 : aiText;
     }
 
