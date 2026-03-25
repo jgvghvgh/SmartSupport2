@@ -33,8 +33,15 @@ public class QueryRewriteService {
 
         messages.add(msg);
 
-        // aiClient.chat() 以 AiAnalysisResult 的 problemAnalysis 作为“改写结果”（referenceReply 为兜底）。
-        return aiClient.chat(messages).getProblemAnalysis();
+        String aiText = aiClient.chatRaw(messages);
+        if (aiText == null || aiText.isBlank()) {
+            return question; // 兜底返回原始问题
+        }
+        // 取 problemAnalysis 部分作为改写结果
+        String[] parts = aiText.split(“解决建议[:：]”);
+        return parts.length > 0
+                ? parts[0].replace(“问题分析：”, “”).trim()
+                : aiText;
     }
 
 }

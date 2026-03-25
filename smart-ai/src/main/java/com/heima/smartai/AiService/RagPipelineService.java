@@ -2,6 +2,7 @@ package com.heima.smartai.AiService;
 
 import com.heima.smartai.Config.AiClient;
 import com.heima.smartai.model.AiAnalysisResult;
+import com.heima.smartai.model.Message;
 import com.heima.smartai.rag.PromptBuilder;
 import com.heima.smartai.rag.QueryRewriteService;
 import com.heima.smartai.rag.RerankService;
@@ -9,11 +10,12 @@ import com.heima.smartai.rag.VectorRetriever;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
+/**
+ * RAG 流程服务
+ * 独立提供完整的 RAG 链路：query改写 -> 向量检索 -> 重排 -> prompt构建 -> AI回复
+ */
 @Service
 public class RagPipelineService {
 
@@ -29,44 +31,34 @@ public class RagPipelineService {
     @Autowired
     private AiClient aiClient;
 
-    public AiAnalysisResult chat(String question){
-
-        // 1 QueryRewrite
-        String rewriteQuery =
-                queryRewriteService.rewrite(question);
-
-        // 2 Vector Search (embedding + search)
-        List<String> docs =
-                vectorRetriever.search(rewriteQuery);
-
-        // 3 Rerank
-        List<String> topDocs =
-                rerankService.rerank(rewriteQuery,docs);
-
-        // 4 Prompt
-        String prompt =
-                PromptBuilder.build(question,topDocs);
-
-        // 5 AI
-        List<Map<String,Object>> messages =
-                buildMessages(prompt);
-
-        return aiClient.chat(messages);
+    /**
+     * 执行 RAG 流程
+     */
+    public AiAnalysisResult chat(String question) {
+        return chat(question, null);
     }
 
-    private List<Map<String,Object>> buildMessages(String prompt){
+    /**
+     * 执行 RAG 流程（带图片识别结果）
+     */
+    public AiAnalysisResult chat(String question, String imageAnalysisResult) {
+        // 1 Query Rewrite
+        String rewriteQuery = queryRewriteService.rewrite(question);
 
-        List<Map<String,Object>> messages =
-                new ArrayList<>();
+        // 2 Vector Search (embedding + search)
+        List<String> docs = vectorRetriever.search(rewriteQuery);
 
-        Map<String,Object> msg =
-                new HashMap<>();
+        // 3 Rerank
+        List<String> topDocs = rerankService.rerank(rewriteQuery, docs);
 
-        msg.put("role","user");
-        msg.put("content",prompt);
+        // 4 Build Prompt
+        String prompt = PromptBuilder.build(question, topDocs, imageAnalysisResult);
 
-        messages.add(msg);
+        // 5 AI Chat
+        Message msg = Message.ofUser(prompt);
+        String aiText = aiClient.chat(List.of(msg));
 
-        return messages;
+        // 6 Parse Response
+        return aiClient.parseResponse(aiText);
     }
 }
