@@ -23,7 +23,7 @@ public class TicketController {
     private TicketService ticketService;
 
     @PostMapping("/submitticket")
-    public CommonResult<String> submitTicket(@RequestBody TicketCreateDTO ticketCreateDTO){
+    public CommonResult<Long> submitTicket(@RequestBody TicketCreateDTO ticketCreateDTO){
         return ticketService.submitTicket(ticketCreateDTO);
     }
 
@@ -35,8 +35,13 @@ public class TicketController {
     }
 
     @PostMapping("/addMessage")
-    public CommonResult<String> addMessage(@RequestBody TicketMessageDTO ticketMessage){
+    public CommonResult<Integer> addMessage(@RequestBody TicketMessageDTO ticketMessage){
         return ticketService.addMessage(ticketMessage);
+    }
+
+    @PostMapping("/saveAiMessage")
+    public CommonResult<Integer> saveAiMessage(@RequestParam Long ticketId, @RequestParam String content){
+        return ticketService.saveAiMessage(ticketId, content);
     }
 
     @PutMapping("/Assign")
@@ -85,8 +90,8 @@ public class TicketController {
         return ticketService.getAssignTicket(agentId,pageNum,pageSize);
     }
     @PostMapping("/PostTicketAttachment")
-    public CommonResult<String> PostTicketAttachment(@RequestParam Long ticketId,
-                                                @RequestParam MultipartFile file){
+    public CommonResult<Long> PostTicketAttachment(@RequestParam Long ticketId,
+                                                   @RequestParam MultipartFile file){
         return ticketService.PostTicketAttachment(ticketId,file);
     }
     @GetMapping("/GetTicketDetails")

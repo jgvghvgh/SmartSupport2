@@ -106,17 +106,7 @@ create table ticket_statistics
     created_at       datetime default CURRENT_TIMESTAMP null
 );
 
-create table ticket_summary
-(
-    id                 bigint auto_increment
-        primary key,
-    ticket_id          bigint                             not null,
-    ai_summary         text                               null,
-    satisfaction_score tinyint                            null,
-    created_at         datetime default CURRENT_TIMESTAMP null,
-    constraint ticket_id
-        unique (ticket_id)
-);
+
 
 create table user
 (

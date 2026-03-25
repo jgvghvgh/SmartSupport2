@@ -11,11 +11,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 public interface TicketService {
-    CommonResult<String> submitTicket(TicketCreateDTO ticketCreateDTO);
+    CommonResult<Long> submitTicket(TicketCreateDTO ticketCreateDTO);
 
     CommonResult<PageResult> getTicket(Long UserId, Integer pageNum, Integer pageSize);
 
-    CommonResult<String> addMessage(TicketMessageDTO ticketMessage);
+    CommonResult<Integer> addMessage(TicketMessageDTO ticketMessage);
+
+    CommonResult<Integer> saveAiMessage(Long ticketId, String content);
 
     CommonResult<String> Assign(Long ticketId);
 
@@ -47,7 +49,7 @@ public interface TicketService {
 
     CommonResult<PageResult> getAssignTicket(Long agentId, Integer pageNum, Integer pageSize);
 
-    CommonResult<String> PostTicketAttachment(Long ticketId, MultipartFile file);
+    CommonResult<Long> PostTicketAttachment(Long ticketId, MultipartFile file);
 
     CommonResult<TicketVo> GetTicketAttachment(Long ticketId);
 

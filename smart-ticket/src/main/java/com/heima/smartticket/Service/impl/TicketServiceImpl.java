@@ -71,7 +71,7 @@ public class TicketServiceImpl implements TicketService {
     private static final String LOCK_KEY_PREFIX = "lock:ticket:create:";
     @Override
     @Transactional
-    public CommonResult<String> submitTicket(TicketCreateDTO ticketCreateDTO) {
+    public CommonResult<Long> submitTicket(TicketCreateDTO ticketCreateDTO) {
         if(ticketCreateDTO.getTitle()==null) throw new BusinessException("标题不能为空");
         if(ticketCreateDTO.getDescription()==null) throw new BusinessException("描述不能为空");
         if(ticketCreateDTO.getUserId()==null) throw new BusinessException("用户id不能为空");
@@ -111,7 +111,7 @@ public class TicketServiceImpl implements TicketService {
 
     @Override
     @Transactional
-    public CommonResult<String> addMessage(TicketMessageDTO ticketMessage) {
+    public CommonResult<Integer> addMessage(TicketMessageDTO ticketMessage) {
         if(ticketMessage.getTicketId()==null){
             throw new BusinessException("工单id不能为空");
         }
@@ -433,6 +433,19 @@ public class TicketServiceImpl implements TicketService {
         eventPublisher.publishEvent(new CommentCreatedEvent(this,outboxMessage));
         return messageid.intValue();
     }
+
+    @Override
+    public CommonResult<Integer> saveAiMessage(Long ticketId, String content) {
+        TicketMessage message = new TicketMessage();
+        message.setTicketId(ticketId);
+        message.setSenderId(null);
+        message.setSenderType("AI");
+        message.setContent(content);
+        message.setIsAi((short) 1);
+        int messageId = addComment(message);
+        return CommonResult.success( messageId);
+    }
+
     public Boolean Messageexists(Long messageid){
         return ticketMessageMapper.exists(messageid);
     }
@@ -456,7 +469,7 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
-    public CommonResult<String> PostTicketAttachment(Long ticketId, MultipartFile file) {
+    public CommonResult<Long> PostTicketAttachment(Long ticketId, MultipartFile file) {
         if(ticketId==null){
             throw new BusinessException("工单id不能为空");
         }
