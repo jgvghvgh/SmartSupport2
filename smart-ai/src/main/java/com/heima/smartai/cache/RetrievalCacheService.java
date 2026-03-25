@@ -51,7 +51,7 @@ public class RetrievalCacheService {
             long now = System.currentTimeMillis();
             if (now > expireTime) {
                 log.debug("检索缓存逻辑过期, queryHash={}, createTime={}", queryHash, createTime);
-                // 逻辑过期但数据还在，返回数据同时触发异步刷新（实际由 VectorRetriever 处理）
+                // 逻辑过期但数据还在，返回数据同时触发异步刷新（由 CacheWarmupService 统一处理）
                 return docs;
             }
 

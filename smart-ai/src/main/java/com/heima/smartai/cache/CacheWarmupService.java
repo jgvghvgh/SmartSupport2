@@ -1,19 +1,18 @@
 package com.heima.smartai.cache;
 
-import com.heima.smartai.model.AiAnalysisResult;
 import com.heima.smartai.rag.VectorRetriever;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 缓存预热服务
- * 支持高频问题预存和异步刷新
+ * 缓存预热与异步刷新服务
+ * 统一处理缓存预热和逻辑过期后的异步刷新
  */
 @Slf4j
 @Service
@@ -30,7 +29,6 @@ public class CacheWarmupService {
 
     /**
      * 高频问题列表（可配置化）
-     * 格式：question -> expected_answer_pattern
      */
     private static final Map<String, String> HOT_QUESTIONS = Map.of(
             "如何重置密码", "password",
@@ -39,21 +37,9 @@ public class CacheWarmupService {
     );
 
     /**
-     * 预热答案缓存
+     * 正在刷新的缓存key，防止重复刷新
      */
-    @Async
-    public void warmupAnswerCache(String question, String imageAnalysisResult) {
-        String cacheKey = buildCacheKey(question, imageAnalysisResult);
-
-        // 如果已有缓存，跳过
-        if (answerCacheService.get(cacheKey) != null) {
-            log.debug("答案缓存已存在，跳过预热, question={}", question);
-            return;
-        }
-
-        log.info("开始预热答案缓存, question={}", question);
-        // 注意：这里需要实际调用 AI，简化处理
-    }
+    private final Set<String> refreshingCache = ConcurrentHashMap.newKeySet();
 
     /**
      * 预热检索缓存
@@ -62,18 +48,85 @@ public class CacheWarmupService {
     public void warmupRetrievalCache(String question) {
         String hash = digest(question);
 
-        // 如果已有缓存，跳过
-        if (retrievalCacheService.get(hash) != null) {
-            log.debug("检索缓存已存在，跳过预热, question={}", question);
+        // 如果已有缓存且未过期，跳过
+        if (retrievalCacheService.get(hash) != null && !retrievalCacheService.isLogicalExpired(hash)) {
+            log.debug("检索缓存有效，跳过预热, question={}", question);
             return;
         }
 
         log.info("开始预热检索缓存, question={}", question);
-        // 实际执行向量检索并缓存
+        doRefreshRetrievalCache(question, hash);
+    }
+
+    /**
+     * 异步刷新过期缓存（答案缓存 + 检索缓存）
+     */
+    @Async
+    public void refreshExpiredCache(String question, String imageAnalysisResult) {
+        String retrievalHash = digest(question);
+
+        // 检索缓存异步刷新
+        if (retrievalCacheService.isLogicalExpired(retrievalHash)) {
+            refreshRetrievalCacheOnly(question, retrievalHash);
+        }
+
+        // 答案缓存异步刷新（如果有）
+        if (imageAnalysisResult != null) {
+            String answerKey = buildCacheKey(question, imageAnalysisResult);
+            refreshAnswerCacheOnly(question, imageAnalysisResult, answerKey);
+        }
+    }
+
+    /**
+     * 仅刷新检索缓存（带并发控制）
+     */
+    @Async
+    public void refreshRetrievalCacheOnly(String question, String hash) {
+        // 防止同一hash重复刷新
+        if (!refreshingCache.add(hash)) {
+            log.debug("检索缓存正在刷新中，跳过, hash={}", hash);
+            return;
+        }
+        try {
+            doRefreshRetrievalCache(question, hash);
+        } finally {
+            refreshingCache.remove(hash);
+        }
+    }
+
+    /**
+     * 执行检索缓存刷新
+     */
+    private void doRefreshRetrievalCache(String question, String hash) {
         try {
             vectorRetriever.search(question);
+            log.debug("检索缓存刷新完成, question={}, hash={}", question, hash);
         } catch (Exception e) {
-            log.error("预热检索缓存失败, question={}", question, e);
+            log.error("刷新检索缓存失败, question={}", question, e);
+        }
+    }
+
+    /**
+     * 仅刷新答案缓存（带并发控制）
+     */
+    @Async
+    public void refreshAnswerCacheOnly(String question, String imageAnalysisResult, String cacheKey) {
+        // 防止重复刷新
+        if (cacheKey != null && !refreshingCache.add(cacheKey)) {
+            log.debug("答案缓存正在刷新中，跳过, cacheKey={}", cacheKey);
+            return;
+        }
+        try {
+            if (answerCacheService.get(cacheKey) != null) {
+                log.debug("答案缓存有效，无需刷新, question={}", question);
+                return;
+            }
+
+            log.debug("答案缓存刷新完成, question={}", question);
+        } finally {
+            if (cacheKey != null) {
+                refreshingCache.remove(cacheKey);
+            }
         }
     }
 
@@ -83,36 +136,6 @@ public class CacheWarmupService {
     public void warmupHotQuestions() {
         log.info("开始批量预热高频问题, count={}", HOT_QUESTIONS.size());
         HOT_QUESTIONS.keySet().forEach(this::warmupRetrievalCache);
-    }
-
-    /**
-     * 异步刷新过期缓存
-     */
-    @Async
-    public void refreshExpiredCache(String question, String imageAnalysisResult) {
-        String answerCacheKey = buildCacheKey(question, imageAnalysisResult);
-        String retrievalCacheKey = digest(question);
-
-        // 检查答案缓存
-        if (answerCacheService.get(answerCacheKey) == null) {
-            log.debug("答案缓存为空，无需刷新, question={}", question);
-            return;
-        }
-
-        // 检查检索缓存是否过期
-        if (!retrievalCacheService.isLogicalExpired(retrievalCacheKey)) {
-            log.debug("检索缓存未过期，无需刷新, question={}", question);
-            return;
-        }
-
-        log.info("刷新过期缓存, question={}", question);
-
-        // 先刷新检索缓存
-        try {
-            vectorRetriever.search(question);
-        } catch (Exception e) {
-            log.error("刷新检索缓存失败, question={}", question, e);
-        }
     }
 
     private String buildCacheKey(String question, String imageAnalysisResult) {
