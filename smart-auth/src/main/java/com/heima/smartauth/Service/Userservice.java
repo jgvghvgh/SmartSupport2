@@ -8,7 +8,7 @@ import com.heima.smartcommon.Result.CommonResult;
 
 import java.util.Map;
 
-public interface Userservice {
+public interface UserService {
     CommonResult<Map<String,Object>> login(LoginDTO loginDTO);
 
     AuthUser findByUserId(String userId);

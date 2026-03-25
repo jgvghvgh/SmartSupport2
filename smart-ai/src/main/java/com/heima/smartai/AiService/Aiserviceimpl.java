@@ -24,7 +24,7 @@ import java.util.Map;
 
 @Slf4j
 @Service
-public class Aiserviceimpl implements AiService {
+public class AiServiceImpl implements AiService {
     @Autowired
     private TicketRemoteClient ticketRemoteClient;
     @Autowired
