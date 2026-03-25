@@ -4,4 +4,5 @@ import com.heima.smartai.model.AiAnalysisResult;
 
 public interface AiService {
     public AiAnalysisResult chat(String message, String ticketId);
+    public AiAnalysisResult chat(String message, String ticketId, String imageUrl, String imageType);
 }

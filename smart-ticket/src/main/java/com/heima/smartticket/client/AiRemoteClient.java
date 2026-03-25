@@ -10,7 +10,8 @@ public interface AiRemoteClient {
     @PostMapping("/api/ai/chat")
     AiAnalysisResultResponse chat(
             @RequestParam("message") String message,
-            @RequestParam("ticketId") String ticketId
+            @RequestParam("ticketId") String ticketId,
+            @RequestParam(value = "imageUrl", required = false) String imageUrl,
+            @RequestParam(value = "imageType", required = false) String imageType
     );
 }
-

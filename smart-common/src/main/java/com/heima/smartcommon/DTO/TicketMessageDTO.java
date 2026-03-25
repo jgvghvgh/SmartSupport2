@@ -11,4 +11,6 @@ public class TicketMessageDTO {
     private Long ticketId;
     private String content;
     private Long senderId;
+    private String imageUrl;
+    private String imageType;
 }

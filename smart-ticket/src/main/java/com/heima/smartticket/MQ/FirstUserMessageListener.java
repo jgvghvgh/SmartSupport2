@@ -3,6 +3,7 @@ package com.heima.smartticket.MQ;
 import com.heima.smartticket.Mapper.TicketMessageMapper;
 import com.heima.smartticket.Mapper.TicketMapper;
 import com.heima.smartticket.Service.NotificationService;
+import com.heima.smartticket.Service.TicketService;
 import com.heima.smartticket.client.AiAnalysisResultResponse;
 import com.heima.smartticket.client.AiRemoteClient;
 import com.heima.smartticket.entity.Ticket;
@@ -26,6 +27,7 @@ public class FirstUserMessageListener {
     private final TicketMapper ticketMapper;
     private final TicketMessageMapper ticketMessageMapper;
     private final NotificationService notificationService;
+    private final TicketService ticketService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional
@@ -46,7 +48,8 @@ public class FirstUserMessageListener {
 
         try {
             AiAnalysisResultResponse resp =
-                    aiRemoteClient.chat(userMessage, String.valueOf(ticketId));
+                    aiRemoteClient.chat(userMessage, String.valueOf(ticketId),
+                            event.getImageUrl(), event.getImageType());
 
             String aiReply = (resp == null || resp.getReferenceReply() == null)
                     ? null
@@ -65,6 +68,14 @@ public class FirstUserMessageListener {
             aiMessage.setIsAi((short) 1);
             ticketMessageMapper.insert(aiMessage);
 
+            // 自动更新工单状态
+            try {
+                ticketService.updateStatusByBusinessAction(ticketId, "AI", aiReply);
+            } catch (Exception e) {
+                log.error("自动更新工单状态失败, ticketId={}, error={}", ticketId, e.getMessage(), e);
+                // 不抛出异常，避免影响主流程
+            }
+
             // 推送给用户
             notificationService.notifyUser(ticket.getUserId(), aiReply);
         } catch (Exception e) {
@@ -72,4 +83,3 @@ public class FirstUserMessageListener {
         }
     }
 }
-

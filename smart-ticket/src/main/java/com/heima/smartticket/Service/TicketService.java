@@ -20,6 +20,29 @@ public interface TicketService {
     CommonResult<String> Assign(Long ticketId);
 
     CommonResult<String> updateStatus(Long ticketId, String status);
+
+    /**
+     * 用户关闭工单
+     * @param ticketId 工单ID
+     * @return 操作结果
+     */
+    CommonResult<String> closeTicket(Long ticketId);
+
+    /**
+     * 客服解决工单（标记为已解决）
+     * @param ticketId 工单ID
+     * @return 操作结果
+     */
+    CommonResult<String> resolveTicket(Long ticketId);
+
+    /**
+     * 用户取消工单
+     * @param ticketId 工单ID
+     * @return 操作结果
+     */
+    CommonResult<String> cancelTicket(Long ticketId);
+
+    void updateStatusByBusinessAction(Long ticketId, String senderType, String messageContent);
     Boolean Messageexists(Long messageid);
 
     CommonResult<PageResult> getAssignTicket(Long agentId, Integer pageNum, Integer pageSize);

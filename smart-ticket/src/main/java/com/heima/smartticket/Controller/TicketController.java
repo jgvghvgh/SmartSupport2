@@ -50,6 +50,34 @@ public class TicketController {
                                         @RequestParam String status){
         return ticketService.updateStatus(ticketId,status);
     }
+
+    /**
+     * 用户关闭工单
+     */
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/close")
+    public CommonResult<String> closeTicket(@RequestParam Long ticketId){
+        return ticketService.closeTicket(ticketId);
+    }
+
+    /**
+     * 客服解决工单（标记为已解决）
+     */
+    @PreAuthorize("hasAnyRole('AGENT','ADMIN')")
+    @PostMapping("/resolve")
+    public CommonResult<String> resolveTicket(@RequestParam Long ticketId){
+        return ticketService.resolveTicket(ticketId);
+    }
+
+    /**
+     * 用户取消工单
+     */
+    @PreAuthorize("hasRole('USER')")
+    @PostMapping("/cancel")
+    public CommonResult<String> cancelTicket(@RequestParam Long ticketId){
+        return ticketService.cancelTicket(ticketId);
+    }
+
    @GetMapping("/getAssignTicket")
     public CommonResult<PageResult> getAssignTicket(@RequestParam Long agentId,
                                            @RequestParam(defaultValue = "1")  Integer pageNum,

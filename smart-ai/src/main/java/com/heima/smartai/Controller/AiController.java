@@ -15,7 +15,9 @@ public class AiController {
     private AiService aiService;
     @PostMapping("/chat")
     public AiAnalysisResult chat(@RequestParam("message") String message,
-                                  @RequestParam("ticketId") String ticketId){
-        return aiService.chat(message, ticketId);
+                                  @RequestParam("ticketId") String ticketId,
+                                  @RequestParam(value = "imageUrl", required = false) String imageUrl,
+                                  @RequestParam(value = "imageType", required = false) String imageType){
+        return aiService.chat(message, ticketId, imageUrl, imageType);
     }
 }

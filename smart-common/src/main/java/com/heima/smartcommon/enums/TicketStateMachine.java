@@ -11,30 +11,36 @@ public class TicketStateMachine {
     private static final Map<TicketStatus, Set<TicketStatus>> TRANSITIONS = new HashMap<>();
 
     static {
-        // NEW状态可以流转到：ASSIGNED（分配客服）、CANCELLED（取消）
+        // NEW状态可以流转到：ASSIGNED（分配客服）、WAITING_AGENT（用户发送消息等待客服）、WAITING_CUSTOMER（AI回复等待用户）、CANCELLED（取消）
         TRANSITIONS.put(TicketStatus.NEW, EnumSet.of(
             TicketStatus.ASSIGNED,
+            TicketStatus.WAITING_AGENT,
+            TicketStatus.WAITING_CUSTOMER,
             TicketStatus.CANCELLED
         ));
 
-        // ASSIGNED状态可以流转到：IN_PROGRESS（开始处理）、CANCELLED（取消）
+        // ASSIGNED状态可以流转到：IN_PROGRESS（开始处理）、WAITING_AGENT（用户发送消息等待客服）、WAITING_CUSTOMER（AI回复等待用户）、CANCELLED（取消）
         TRANSITIONS.put(TicketStatus.ASSIGNED, EnumSet.of(
             TicketStatus.IN_PROGRESS,
+            TicketStatus.WAITING_AGENT,
+            TicketStatus.WAITING_CUSTOMER,
             TicketStatus.CANCELLED
         ));
 
-        // IN_PROGRESS状态可以流转到：WAITING_CUSTOMER、WAITING_AGENT、RESOLVED
+        // IN_PROGRESS状态可以流转到：WAITING_CUSTOMER、WAITING_AGENT、RESOLVED、CLOSED
         TRANSITIONS.put(TicketStatus.IN_PROGRESS, EnumSet.of(
             TicketStatus.WAITING_CUSTOMER,
             TicketStatus.WAITING_AGENT,
-            TicketStatus.RESOLVED
+            TicketStatus.RESOLVED,
+            TicketStatus.CLOSED
         ));
 
-        // WAITING_CUSTOMER状态可以流转到：IN_PROGRESS、RESOLVED、CLOSED
+        // WAITING_CUSTOMER状态可以流转到：IN_PROGRESS、RESOLVED、CLOSED、CANCELLED
         TRANSITIONS.put(TicketStatus.WAITING_CUSTOMER, EnumSet.of(
             TicketStatus.IN_PROGRESS,
             TicketStatus.RESOLVED,
-            TicketStatus.CLOSED
+            TicketStatus.CLOSED,
+            TicketStatus.CANCELLED
         ));
 
         // WAITING_AGENT状态可以流转到：IN_PROGRESS、RESOLVED、CLOSED

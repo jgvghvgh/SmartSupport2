@@ -138,9 +138,25 @@ public class TicketServiceImpl implements TicketService {
         TicketMessage message = new TicketMessage(null,ticketMessage.getTicketId(),ticketMessage.getSenderId(),role,ticketMessage.getContent(),(short) 0,null);
         int messageid = addComment(message);
 
+        // 自动更新工单状态
+        try {
+            if (role != null) {
+                String senderType = role;
+                // 将ADMIN也视为AGENT进行状态更新
+                if ("ADMIN".equalsIgnoreCase(senderType)) {
+                    senderType = "AGENT";
+                }
+                updateStatusByBusinessAction(ticketMessage.getTicketId(), senderType, ticketMessage.getContent());
+            }
+        } catch (Exception e) {
+            System.err.println("自动更新工单状态失败: " + e.getMessage());
+            // 不抛出异常，避免影响主流程
+        }
+
         if (isFirstUserMessage) {
             eventPublisher.publishEvent(
-                    new FirstUserMessageEvent(this, ticketMessage.getTicketId(), ticketMessage.getContent())
+                    new FirstUserMessageEvent(this, ticketMessage.getTicketId(), ticketMessage.getContent(),
+                            ticketMessage.getImageUrl(), ticketMessage.getImageType())
             );
         }
 
@@ -197,6 +213,20 @@ public class TicketServiceImpl implements TicketService {
        ticketMapper.insertAssignId( ticketId, agentId);
         //通过websocket进行提示客服已经被分配
 
+        // 自动更新工单状态：NEW -> ASSIGNED
+        try {
+            Ticket ticket = ticketMapper.findById(ticketId);
+            if (ticket != null && TicketStatus.NEW.name().equals(ticket.getStatus())) {
+                if (TicketStateMachine.canTransition(TicketStatus.NEW, TicketStatus.ASSIGNED)) {
+                    ticket.setStatus(TicketStatus.ASSIGNED.name());
+                    ticketMapper.update(ticket);
+                    System.out.println("工单 " + ticketId + " 状态自动更新: NEW -> ASSIGNED");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("自动更新工单状态失败: " + e.getMessage());
+            // 不抛出异常，避免影响主流程
+        }
 
         return CommonResult.success("指派成功");
     }
@@ -238,6 +268,156 @@ public class TicketServiceImpl implements TicketService {
         }
 
         return CommonResult.success("更新成功");
+    }
+
+    @Override
+    @Transactional
+    public CommonResult<String> closeTicket(Long ticketId) {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        if (ticketId == null) {
+            throw new BusinessException("工单id不能为空");
+        }
+
+        Ticket ticket = ticketMapper.findById(ticketId);
+        if (ticket == null) {
+            throw new BusinessException("工单不存在");
+        }
+
+        // 验证是否是工单创建者
+        if (!userId.equals(ticket.getUserId())) {
+            throw new BusinessException("无权操作该工单");
+        }
+
+        // 检查当前状态是否可以关闭
+        TicketStatus currentStatus = TicketStatus.fromString(ticket.getStatus());
+        if (!TicketStateMachine.canTransition(currentStatus, TicketStatus.CLOSED)) {
+            throw new BusinessException("当前状态不能关闭工单: " + ticket.getStatus());
+        }
+
+        // 检查是否是终态
+        if (TicketStateMachine.isFinalStatus(currentStatus)) {
+            throw new BusinessException("工单已结束，无需关闭");
+        }
+
+        // 更新状态为已关闭
+        ticket.setStatus(TicketStatus.CLOSED.name());
+        ticketMapper.update(ticket);
+
+        // 减少客服负载（如果已分配客服）
+        if (ticket.getAssigneeId() != null) {
+            reduceAgentLoad(ticket.getAssigneeId());
+        }
+
+        return CommonResult.success("工单已关闭");
+    }
+
+    @Override
+    @Transactional
+    public CommonResult<String> resolveTicket(Long ticketId) {
+        Long agentId = BaseContext.getCurrentId();
+        if (agentId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        if (ticketId == null) {
+            throw new BusinessException("工单id不能为空");
+        }
+
+        Ticket ticket = ticketMapper.findById(ticketId);
+        if (ticket == null) {
+            throw new BusinessException("工单不存在");
+        }
+
+        // 验证是否是分配的客服或管理员
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String role = authentication.getAuthorities()
+                .stream()
+                .findFirst()
+                .map(GrantedAuthority::getAuthority)
+                .orElse(null);
+
+        boolean isAdmin = "ADMIN".equalsIgnoreCase(role);
+        boolean isAssignedAgent = agentId.equals(ticket.getAssigneeId());
+
+        if (!isAdmin && !isAssignedAgent) {
+            throw new BusinessException("无权操作该工单，只有分配的客服或管理员可以标记解决");
+        }
+
+        // 检查当前状态是否可以标记为已解决
+        TicketStatus currentStatus = TicketStatus.fromString(ticket.getStatus());
+        if (!TicketStateMachine.canTransition(currentStatus, TicketStatus.RESOLVED)) {
+            throw new BusinessException("当前状态不能标记为已解决: " + ticket.getStatus());
+        }
+
+        // 检查是否是终态
+        if (TicketStateMachine.isFinalStatus(currentStatus)) {
+            throw new BusinessException("工单已结束");
+        }
+
+        // 更新状态为已解决
+        ticket.setStatus(TicketStatus.RESOLVED.name());
+        ticketMapper.update(ticket);
+
+        // 减少客服负载
+        if (ticket.getAssigneeId() != null) {
+            reduceAgentLoad(ticket.getAssigneeId());
+        }
+
+        // 通知用户工单已解决
+        try {
+            notificationService.notifyUser(ticket.getUserId(),
+                    "您的工单[#" + ticketId + "]已被客服标记为已解决");
+        } catch (Exception e) {
+            System.err.println("通知用户失败: " + e.getMessage());
+        }
+
+        return CommonResult.success("工单已标记为已解决");
+    }
+
+    @Override
+    @Transactional
+    public CommonResult<String> cancelTicket(Long ticketId) {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        if (ticketId == null) {
+            throw new BusinessException("工单id不能为空");
+        }
+
+        Ticket ticket = ticketMapper.findById(ticketId);
+        if (ticket == null) {
+            throw new BusinessException("工单不存在");
+        }
+
+        // 验证是否是工单创建者
+        if (!userId.equals(ticket.getUserId())) {
+            throw new BusinessException("无权操作该工单");
+        }
+
+        // 检查当前状态是否可以取消
+        TicketStatus currentStatus = TicketStatus.fromString(ticket.getStatus());
+        if (!TicketStateMachine.canTransition(currentStatus, TicketStatus.CANCELLED)) {
+            throw new BusinessException("当前状态不能取消工单: " + ticket.getStatus());
+        }
+
+        // 检查是否是终态
+        if (TicketStateMachine.isFinalStatus(currentStatus)) {
+            throw new BusinessException("工单已结束，无需取消");
+        }
+
+        // 更新状态为已取消
+        ticket.setStatus(TicketStatus.CANCELLED.name());
+        ticketMapper.update(ticket);
+
+        // 减少客服负载（如果已分配客服）
+        if (ticket.getAssigneeId() != null) {
+            reduceAgentLoad(ticket.getAssigneeId());
+        }
+
+        return CommonResult.success("工单已取消");
     }
     @Transactional
     public int addComment(TicketMessage ticketMessage){
@@ -381,7 +561,7 @@ public class TicketServiceImpl implements TicketService {
      * @param senderType 发送者类型 (USER, AGENT, AI)
      * @param messageContent 消息内容（用于判断是否解决问题）
      */
-    private void updateStatusByBusinessAction(Long ticketId, String senderType, String messageContent) {
+    public void updateStatusByBusinessAction(Long ticketId, String senderType, String messageContent) {
         try {
             Ticket ticket = ticketMapper.findById(ticketId);
             if (ticket == null) {
@@ -411,7 +591,10 @@ public class TicketServiceImpl implements TicketService {
                 }
             } else if ("AGENT".equals(senderTypeUpper)) {
                 // 客服发送消息
-                if (currentStatus == TicketStatus.WAITING_AGENT) {
+                if (currentStatus == TicketStatus.ASSIGNED) {
+                    // 客服开始处理已分配的工单
+                    newStatus = TicketStatus.IN_PROGRESS;
+                } else if (currentStatus == TicketStatus.WAITING_AGENT) {
                     // 客服回复了用户的询问
                     newStatus = TicketStatus.IN_PROGRESS;
                 } else if (currentStatus == TicketStatus.IN_PROGRESS || currentStatus == TicketStatus.WAITING_CUSTOMER) {
