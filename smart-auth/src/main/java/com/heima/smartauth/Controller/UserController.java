@@ -1,7 +1,7 @@
 package com.heima.smartauth.Controller;
 
-import com.heima.smartauth.Service.Userservice;
-;
+import com.heima.smartauth.Service.UserService;
+
 import com.heima.smartcommon.DTO.LoginDTO;
 import com.heima.smartcommon.DTO.RegisterDTO;
 import com.heima.smartcommon.Result.CommonResult;
@@ -14,18 +14,18 @@ import java.util.Map;
 @RequestMapping("/api/user")
 public class UserController {
     @Autowired
-    private Userservice userservice;
+    private UserService userService;
     @GetMapping("/test")
     public String test(){
         return "hello world";
     }
     @PostMapping("/login")
     public CommonResult<Map<String,Object>> login(@RequestBody LoginDTO loginDTO){
-        return userservice.login(loginDTO);
+        return userService.login(loginDTO);
     }
     @PostMapping("/register")
     public CommonResult< Map<String,Object>> register(@RequestBody RegisterDTO logindto){
-        return userservice.register(logindto);
+        return userService.register(logindto);
     }
 
 }

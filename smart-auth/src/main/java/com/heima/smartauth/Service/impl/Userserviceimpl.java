@@ -2,7 +2,7 @@ package com.heima.smartauth.Service.impl;
 
 import com.heima.smartauth.Mapper.UserMapper;
 
-import com.heima.smartauth.Service.Userservice;
+import com.heima.smartauth.Service.UserService;
 import com.heima.smartauth.Utils.JwtUtils;
 import com.heima.smartauth.entity.AuthUser;
 import com.heima.smartauth.entity.SysUserAuth;
@@ -25,14 +25,14 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class Userserviceimpl implements Userservice {
+public class UserServiceImpl implements UserService {
     @Autowired
     private UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     @Autowired
     private RedisTemplate redisTemplate;
 
-    public Userserviceimpl(PasswordEncoder passwordEncoder) {
+    public UserServiceImpl(PasswordEncoder passwordEncoder) {
         this.passwordEncoder = passwordEncoder;
     }
     @Override
@@ -61,7 +61,7 @@ public class Userserviceimpl implements Userservice {
         userData.put("id", id);
         userData.put("token", token);
         AuthUser user1 = userMapper.findById(id);
-        if(user1.getRole() == "AGENT"){
+        if("AGENT".equals(user1.getRole())){
             Long agentId = id;
             redisTemplate.opsForValue()
                     .set("agent:heartbeat:"+agentId,

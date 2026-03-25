@@ -1,5 +1,6 @@
 package com.heima.smartai.Config;
 import com.heima.smartai.model.AiAnalysisResult;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class AiClient {
 
@@ -64,7 +66,7 @@ public class AiClient {
         try {
             aiResponse = restTemplate.postForEntity(aiConfig.getApiUrl(), request, Map.class);
         } catch (Exception e) {
-            System.out.println("AI调用异常：" + e.getMessage());
+            log.error("AI调用异常：{}", e.getMessage());
             return null;
         }
 
@@ -86,7 +88,7 @@ public class AiClient {
                 return (String) output.get("text");
             }
         } catch (Exception e) {
-            System.out.println("解析AI响应失败：" + e.getMessage());
+            log.error("解析AI响应失败：{}", e.getMessage());
         }
 
         return null;

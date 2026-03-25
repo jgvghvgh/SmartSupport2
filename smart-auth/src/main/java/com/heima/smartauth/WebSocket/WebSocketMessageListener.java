@@ -28,7 +28,7 @@ public class WebSocketMessageListener implements MessageListener {
                     registry.sendMessage(msg.getUserId(), msg.getMessage());
                 } catch (Exception e) {
                     // 如果发送失败，可能是session已关闭
-                    System.err.println("发送消息失败: " + e.getMessage());
+                    log.error("发送消息失败: {}", e.getMessage());
                 }
             }
         }

@@ -1,5 +1,6 @@
 package com.heima.smartauth.WebSocket;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -7,6 +8,7 @@ import org.springframework.data.redis.listener.KeyExpirationEventMessageListener
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class RedisKeyExpirationListener
         extends KeyExpirationEventMessageListener {
@@ -30,7 +32,7 @@ public class RedisKeyExpirationListener
             redisTemplate.opsForZSet()
                     .remove("agent:load", csId.toString());
 
-            System.out.println("客服下线："+csId);
+            log.info("客服下线：{}", csId);
         }
     }
 }

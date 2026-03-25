@@ -2,12 +2,14 @@ package com.heima.smartticket.Service;
 
 import com.heima.smartauth.WebSocket.WebSocketMessagePublisher;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
     private final WebSocketMessagePublisher publisher;
@@ -23,7 +25,7 @@ public class NotificationService {
         }
          else {
             // 用户离线可扩展为：保存数据库 or 发邮件
-            System.out.println("用户 " + userId + " 离线，暂存消息");
+            log.info("用户 {} 离线，暂存消息", userId);
         }
     }
 
@@ -33,7 +35,7 @@ public class NotificationService {
             publisher.publishMessage(agentId, message);
         } else {
             // 客服离线可扩展为：保存数据库或发送其他通知
-            System.out.println("客服 " + agentId + " 离线，暂存消息");
+            log.info("客服 {} 离线，暂存消息", agentId);
         }
     }
 }

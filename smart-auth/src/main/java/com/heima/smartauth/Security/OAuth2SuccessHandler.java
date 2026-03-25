@@ -1,7 +1,7 @@
 package com.heima.smartauth.Security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.heima.smartauth.Service.Userservice;
+import com.heima.smartauth.Service.UserService;
 import com.heima.smartauth.Utils.JwtUtils;
 import com.heima.smartauth.entity.AuthUser;
 import com.heima.smartauth.entity.SysUserAuth;
@@ -31,7 +31,7 @@ import java.util.Map;
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private final JwtUtils jwtUtils;           // 你生成 JWT 的工具类
-    private final Userservice userService;      // 用户服务
+    private final UserService userService;      // 用户服务
 
     @Override
     @Transactional

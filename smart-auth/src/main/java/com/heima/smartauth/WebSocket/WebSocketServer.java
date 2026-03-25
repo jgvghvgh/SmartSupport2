@@ -1,6 +1,7 @@
 package com.heima.smartauth.WebSocket;
 
 import com.heima.smartauth.Utils.JwtUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class WebSocketServer extends TextWebSocketHandler {
 
@@ -49,7 +51,7 @@ public class WebSocketServer extends TextWebSocketHandler {
                 TimeUnit.SECONDS
         );
 
-        System.out.println("用户 " + userId + " 已上线");
+        log.info("用户 {} 已上线", userId);
     }
 
     @Override
@@ -68,7 +70,7 @@ public class WebSocketServer extends TextWebSocketHandler {
             redisTemplate.opsForZSet().remove("agent:load", userId.toString());
         }
 
-        System.out.println("用户 " + userId + " 下线");
+        log.info("用户 {} 下线", userId);
     }
 
     @Override
@@ -90,7 +92,7 @@ public class WebSocketServer extends TextWebSocketHandler {
             try {
                 // 验证token并获取用户信息
                 if (!jwtUtils.validateToken(token)) {
-                    System.err.println("心跳检测: token无效");
+                    log.warn("心跳检测: token无效");
                     return;
                 }
 
@@ -98,7 +100,7 @@ public class WebSocketServer extends TextWebSocketHandler {
                 role = jwtUtils.getRoleFromToken(token);
 
             } catch (Exception e) {
-                System.err.println("心跳检测处理失败: " + e.getMessage());
+                log.error("心跳检测处理失败: {}", e.getMessage());
                 return;
             }
         } else if ("PING".equals(payload)) {
@@ -111,7 +113,7 @@ public class WebSocketServer extends TextWebSocketHandler {
         }
 
         if (userId == null || role == null) {
-            System.err.println("心跳检测: 无法获取用户信息");
+            log.warn("心跳检测: 无法获取用户信息");
             return;
         }
 
@@ -144,7 +146,7 @@ public class WebSocketServer extends TextWebSocketHandler {
                 TimeUnit.SECONDS
         );
 
-        System.out.println("用户 " + userId + " 心跳刷新成功" + (isDistributedPing ? " (分布式)" : ""));
+        log.info("用户 {} 心跳刷新成功{}", userId, isDistributedPing ? " (分布式)" : "");
     }
 
     private Long getUserIdFromToken(WebSocketSession session) {

@@ -38,7 +38,10 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 
 public class TicketServiceImpl implements TicketService {
 
@@ -99,7 +102,7 @@ public class TicketServiceImpl implements TicketService {
             return CommonResult.success(new PageResult<>(0L, Collections.emptyList()));
         }
         Long total = ticketMapper.getTicketCount(UserId);
-        System.out.println(total);
+        log.info("Total tickets: {}", total);
 // 构建分页结果
         PageResult<List<TicketCreateVO>> pageResult = new PageResult<>(total, list);
         return CommonResult.success(pageResult);
@@ -149,7 +152,7 @@ public class TicketServiceImpl implements TicketService {
                 updateStatusByBusinessAction(ticketMessage.getTicketId(), senderType, ticketMessage.getContent());
             }
         } catch (Exception e) {
-            System.err.println("自动更新工单状态失败: " + e.getMessage());
+            log.warn("自动更新工单状态失败: {}", e.getMessage());
             // 不抛出异常，避免影响主流程
         }
 
@@ -178,7 +181,7 @@ public class TicketServiceImpl implements TicketService {
             }
         } catch (Exception e) {
             // 推送失败不影响主流程
-            System.err.println("消息推送失败: " + e.getMessage());
+            log.warn("消息推送失败: {}", e.getMessage());
         }
 
         return CommonResult.success(messageid);
@@ -220,11 +223,11 @@ public class TicketServiceImpl implements TicketService {
                 if (TicketStateMachine.canTransition(TicketStatus.NEW, TicketStatus.ASSIGNED)) {
                     ticket.setStatus(TicketStatus.ASSIGNED.name());
                     ticketMapper.update(ticket);
-                    System.out.println("工单 " + ticketId + " 状态自动更新: NEW -> ASSIGNED");
+                    log.info("工单 {} 状态自动更新: NEW -> ASSIGNED", ticketId);
                 }
             }
         } catch (Exception e) {
-            System.err.println("自动更新工单状态失败: " + e.getMessage());
+            log.warn("自动更新工单状态失败: {}", e.getMessage());
             // 不抛出异常，避免影响主流程
         }
 
@@ -370,7 +373,7 @@ public class TicketServiceImpl implements TicketService {
             notificationService.notifyUser(ticket.getUserId(),
                     "您的工单[#" + ticketId + "]已被客服标记为已解决");
         } catch (Exception e) {
-            System.err.println("通知用户失败: " + e.getMessage());
+            log.warn("通知用户失败: {}", e.getMessage());
         }
 
         return CommonResult.success("工单已标记为已解决");
@@ -536,18 +539,21 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
+    @Deprecated
     public CommonResult<TicketOverviewVO> overview() {
-        return null;
+        throw new UnsupportedOperationException("overview 方法暂未实现");
     }
 
     @Override
+    @Deprecated
     public CommonResult<List <DailyTicketStatsVO>> daily() {
-        return null;
+        throw new UnsupportedOperationException("daily 方法暂未实现");
     }
 
     @Override
+    @Deprecated
     public CommonResult<List<UserTicketRankVO>> topUsers() {
-        return null;
+        throw new UnsupportedOperationException("topUsers 方法暂未实现");
     }
 
     /** 每次有人查看工单详情时调用 */
@@ -561,17 +567,18 @@ public class TicketServiceImpl implements TicketService {
      * @param senderType 发送者类型 (USER, AGENT, AI)
      * @param messageContent 消息内容（用于判断是否解决问题）
      */
+    @Transactional
     public void updateStatusByBusinessAction(Long ticketId, String senderType, String messageContent) {
         try {
             Ticket ticket = ticketMapper.findById(ticketId);
             if (ticket == null) {
-                System.err.println("工单不存在: " + ticketId);
+                log.warn("工单不存在: {}", ticketId);
                 return;
             }
 
             TicketStatus currentStatus = TicketStatus.fromString(ticket.getStatus());
             if (currentStatus == null) {
-                System.err.println("工单状态无效: " + ticket.getStatus());
+                log.warn("工单状态无效: {}", ticket.getStatus());
                 return;
             }
 
@@ -623,7 +630,7 @@ public class TicketServiceImpl implements TicketService {
                 if (TicketStateMachine.canTransition(currentStatus, newStatus)) {
                     ticket.setStatus(newStatus.name());
                     ticketMapper.update(ticket);
-                    System.out.println("工单 " + ticketId + " 状态自动更新: " + currentStatus + " -> " + newStatus);
+                    log.info("工单 {} 状态自动更新: {} -> {}", ticketId, currentStatus, newStatus);
 
                     // 如果是完成状态，减少客服负载
                     if ((newStatus == TicketStatus.RESOLVED || newStatus == TicketStatus.CLOSED)
@@ -631,11 +638,11 @@ public class TicketServiceImpl implements TicketService {
                         reduceAgentLoad(ticket.getAssigneeId());
                     }
                 } else {
-                    System.err.println("工单状态流转不允许: " + currentStatus + " -> " + newStatus);
+                    log.warn("工单状态流转不允许: {} -> {}", currentStatus, newStatus);
                 }
             }
         } catch (Exception e) {
-            System.err.println("自动更新工单状态失败: " + e.getMessage());
+            log.warn("自动更新工单状态失败: {}", e.getMessage());
             // 不抛出异常，避免影响主业务逻辑
         }
     }
@@ -649,13 +656,13 @@ public class TicketServiceImpl implements TicketService {
             Double currentScore = redisTemplate.opsForZSet().score("agent:load", agentId.toString());
             if (currentScore != null && currentScore > 0) {
                 redisTemplate.opsForZSet().incrementScore("agent:load", agentId.toString(), -1);
-                System.out.println("客服 " + agentId + " 负载减少，当前分数: " + (currentScore - 1));
+                log.info("客服 {} 负载减少，当前分数: {}", agentId, currentScore - 1);
             } else {
                 // 客服不在负载集合中，可能已下线或负载为0
-                System.out.println("客服 " + agentId + " 不在负载集合中或负载为0");
+                log.info("客服 {} 不在负载集合中或负载为0", agentId);
             }
         } catch (Exception e) {
-            System.err.println("减少客服负载失败: " + e.getMessage());
+            log.error("减少客服负载失败: {}", e.getMessage());
             // 不抛出异常，避免影响主流程
         }
     }

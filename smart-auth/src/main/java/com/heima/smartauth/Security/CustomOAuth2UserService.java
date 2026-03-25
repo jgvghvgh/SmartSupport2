@@ -1,6 +1,7 @@
 package com.heima.smartauth.Security;
 
-import com.heima.smartauth.Service.Userservice;
+
+import com.heima.smartauth.Service.UserService;
 import com.heima.smartauth.entity.AuthUser;
 import com.heima.smartauth.entity.SysUserAuth;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,9 +20,9 @@ import java.util.Map;
 @Service
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     @Autowired
-    private  Userservice userService;
+    private  UserService userService;
 
-    public CustomOAuth2UserService(Userservice userService) {
+    public CustomOAuth2UserService(UserService userService) {
         this.userService = userService;
     }
 

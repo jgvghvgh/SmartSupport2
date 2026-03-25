@@ -4,34 +4,27 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
+@AllArgsConstructor
 
 public class CommonResult<T> {
     private int code;
     private String message;
-    private Object data;
-    public CommonResult(int code, String message, Object data) {
-        this.code = code;
-        this.message = message;
-        this.data = data;
+    private T data;
+
+    public CommonResult() {
     }
-    public CommonResult(int code, String message) {
-        this.code = code;
-        this.message = message;
-    }
-    public CommonResult(Object data) {
-        this.data = data;
-    }
+
     //增删改 成功响应
     public CommonResult<T> success(){
-        return new CommonResult<T>(1,"操作成功",null);
+        return new CommonResult<>(1,"操作成功",null);
     }
 
-    public static CommonResult<T> success(Object data){
-        return new CommonResult<T>(1,"操作成功",data);
+    public static <T> CommonResult<T> success(T data){
+        return new CommonResult<>(1,"操作成功",data);
     }
 
-    public static CommonResult<T> error(String msg){
-        return new CommonResult<T>(0,msg,null);
+    public static <T> CommonResult<T> error(String msg){
+        return new CommonResult<>(0,msg,null);
     }
 
 

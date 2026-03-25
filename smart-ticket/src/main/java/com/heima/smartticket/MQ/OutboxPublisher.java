@@ -35,7 +35,7 @@ public class OutboxPublisher {
                 outboxMapper.markAsSent(msg.getId());
             } catch (Exception e) {
                 outboxMapper.incrementRetry(msg.getId());
-                System.out.println("发送工单消息失败, id=" + msg.getId() + ", error=" + e.getMessage());
+                log.error("发送工单消息失败, id={}, error={}", msg.getId(), e.getMessage());
             }
         }
     }

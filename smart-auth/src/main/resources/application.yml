@@ -12,8 +12,8 @@ spring:
       client:
         registration:
           github:
-            client-id: Ov23lixqIG2RQeikfrCD
-            client-secret: 2ce67a9bcd1949f0745ee1e92124334b4c4ce948
+            client-id: ${GITHUB_CLIENT_ID:your-github-client-id}
+            client-secret: ${GITHUB_CLIENT_SECRET:your-github-client-secret}
             client-name: GitHub
             provider: github
             authorization-grant-type: authorization_code
