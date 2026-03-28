@@ -75,7 +75,6 @@ public class TicketServiceImpl implements TicketService {
         if(ticketCreateDTO.getTitle()==null) throw new BusinessException("标题不能为空");
         if(ticketCreateDTO.getDescription()==null) throw new BusinessException("描述不能为空");
         if(ticketCreateDTO.getUserId()==null) throw new BusinessException("用户id不能为空");
-        String key="ticket:"+ticketCreateDTO.getUserId();
         String lockKey = LOCK_KEY_PREFIX + ticketCreateDTO.getUserId();
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 5, TimeUnit.SECONDS);
         if (Boolean.FALSE.equals(locked)) {
@@ -172,12 +171,13 @@ public class TicketServiceImpl implements TicketService {
                         notificationService.notifyAgent(ticket.getAssigneeId(),
                                 "用户[" + ticket.getUserId() + "] 发送新消息: " + ticketMessage.getContent());
                     }
-                } else if (role.equalsIgnoreCase("AGENT")) {
-                    // 客服发送消息，推送给用户
+                } else if (role.equalsIgnoreCase("AGENT") || role.equalsIgnoreCase("ADMIN")) {
+                    // 客服或管理员发送消息，推送给用户
                     notificationService.notifyUser(ticket.getUserId(),
-                            "客服[" + ticketMessage.getSenderId() + "] 回复: " + ticketMessage.getContent());
+                            role.equalsIgnoreCase("ADMIN") ? "管理员" : "客服[" + ticketMessage.getSenderId() + "]"
+                                    + " 回复: " + ticketMessage.getContent());
                 }
-                // AI消息不推送（senderType="AI"）
+
             }
         } catch (Exception e) {
             // 推送失败不影响主流程
@@ -213,7 +213,6 @@ public class TicketServiceImpl implements TicketService {
         if(agentId==null){
             return CommonResult.error("没有可用的客服");
         }
-       ticketMapper.insertAssignId( ticketId, agentId);
         //通过websocket进行提示客服已经被分配
 
         // 自动更新工单状态：NEW -> ASSIGNED
@@ -499,9 +498,9 @@ public class TicketServiceImpl implements TicketService {
         }
         TicketVo ticketVo = new TicketVo();
         ticketVo.setAttachments(ticketAttachment);
-        String content= ticketMapper.findById(ticketId).getDescription();
-        ticketVo.setContent(content);
-        ticketVo.setSenderId(String.valueOf(ticketMapper.findById(ticketId).getUserId()));
+        Ticket ticket = ticketMapper.findById(ticketId);
+        ticketVo.setContent(ticket.getDescription());
+        ticketVo.setSenderId(String.valueOf(ticket.getUserId()));
         //增加热度
         incrementHot(ticketId);
         return CommonResult.success(ticketVo);

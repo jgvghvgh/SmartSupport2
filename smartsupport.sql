@@ -119,7 +119,6 @@ create table user
     avatar              varchar(255)                                              null,
     created_at          datetime                        default CURRENT_TIMESTAMP null,
     updated_at          datetime                        default CURRENT_TIMESTAMP null on update CURRENT_TIMESTAMP,
-    active_ticket_count int                                                       null,
     state               int                                                       not null,
     constraint username
         unique (username)

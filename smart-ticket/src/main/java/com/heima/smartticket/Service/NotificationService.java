@@ -1,6 +1,8 @@
 package com.heima.smartticket.Service;
 
 import com.heima.smartauth.WebSocket.WebSocketMessagePublisher;
+import com.heima.smartticket.Mapper.NotificationMapper;
+import com.heima.smartticket.entity.Notification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,27 +17,36 @@ public class NotificationService {
     private final WebSocketMessagePublisher publisher;
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+    @Autowired
+    private NotificationMapper notificationMapper;
 
     public void notifyUser(Long userId, String message) {
-
-        // 判断用户是否在线,通过redis在线表判断
         if (redisTemplate.hasKey("online:user:" + userId)) {
-
             publisher.publishMessage(userId, message);
-        }
-         else {
-            // 用户离线可扩展为：保存数据库 or 发邮件
-            log.info("用户 {} 离线，暂存消息", userId);
+        } else {
+            saveOfflineNotification(userId, "USER_MESSAGE", message);
         }
     }
 
     public void notifyAgent(Long agentId, String message) {
-        // 判断客服是否在线，通过redis在线表判断
         if (redisTemplate.hasKey("online:agent:" + agentId)) {
             publisher.publishMessage(agentId, message);
         } else {
-            // 客服离线可扩展为：保存数据库或发送其他通知
-            log.info("客服 {} 离线，暂存消息", agentId);
+            saveOfflineNotification(agentId, "AGENT_MESSAGE", message);
+        }
+    }
+
+    private void saveOfflineNotification(Long userId, String type, String content) {
+        try {
+            Notification notification = new Notification();
+            notification.setUserId(userId);
+            notification.setType(type);
+            notification.setContent(content);
+            notification.setReadFlag(false);
+            notificationMapper.insert(notification);
+            log.info("离线通知已保存: userId={}, type={}", userId, type);
+        } catch (Exception e) {
+            log.error("保存离线通知失败: userId={}, error={}", userId, e.getMessage());
         }
     }
 }

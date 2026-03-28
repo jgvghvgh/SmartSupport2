@@ -36,6 +36,6 @@ public interface TicketMapper {
 
 
     List<TicketCreateVO> getTickets(List<Long> ticketIds);
-    @Insert("insert into ticket_assign(ticket_id,agent_id) values(#{ticketId},#{agentId})")
-    void insertAssignId(Long ticketId, Long agentId);
+    @Insert("insert into ticket_message(ticket_id,content,sender_id) values(#{ticketId},#{content},#{senderId})")
+    void insertMessage(TicketMessage message);
 }
