@@ -10,3 +10,16 @@ spring:
         username: nacos               # ?? Nacos ????????
         password: nacos
 
+# AI模式切换: original=原RAG模式, agent=ReAct Agent
+ai:
+  mode: original
+
+# MCP配置
+mcp:
+  client:
+    servers:
+      # 配置外部MCP Server，例如：
+      # - name: filesystem
+      #   url: http://localhost:8083
+      #   enabled: false
+
