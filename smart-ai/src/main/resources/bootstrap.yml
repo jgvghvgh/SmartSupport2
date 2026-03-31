@@ -4,12 +4,12 @@ spring:
   cloud:
     nacos:
       discovery:
-        ip: 26.124.231.76
-        server-addr: 26.124.231.76:8848   # Nacos 地址
+        ip:
+        server-addr:   # Nacos 地址
         username: nacos               # 如果 Nacos 设置了用户名密码
         password: nacos
       config:
-        server-addr: 26.124.231.76:8848
+        server-addr:  # Nacos 配置中心地址
         file-extension: yml
         name: smart-ai   # Data ID，不带后缀
         group: DEFAULT_GROUP

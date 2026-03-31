@@ -17,6 +17,7 @@ import com.heima.smartai.rag.VectorRetriever;
 import com.heima.smartcommon.Result.CommonResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.List;
  */
 @Slf4j
 @Service
+@Primary
 public class AiServiceImpl implements AiService {
 
     @Autowired
