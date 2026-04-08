@@ -8,13 +8,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public CommonResult<T> handleBusinessException(BusinessException ex) {
+    public static <T> CommonResult<T> handleBusinessException(BusinessException ex) {
         return CommonResult.error(ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
-    public CommonResult<T> handleOtherException(Exception ex) {
-        ex.printStackTrace(); // 方便调试，可根据环境关闭
+    public static <T> CommonResult<T> handleOtherException(Exception ex) {
+        ex.printStackTrace();
         return CommonResult.error("系统内部错误，请联系管理员");
     }
 }

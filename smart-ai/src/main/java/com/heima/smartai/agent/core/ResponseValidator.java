@@ -35,38 +35,8 @@ public class ResponseValidator {
         }
     }
 
-//    /**
-//     * 验证 Action 类型的响应（旧版，保留兼容）
-//     * @deprecated 使用 validateToolCall() 替代
-//     */
-//    @Deprecated
-//    public ValidationResult validateAction(StructuredResponse response) {
-//        List<String> errors = new ArrayList<>();
-//
-//        if (response.getToolName() == null || response.getToolName().isBlank()) {
-//            errors.add("缺少工具名称(toolName)");
-//        }
-//
-//        if (response.getActionParams() == null) {
-//            errors.add("缺少工具参数(actionParams)");
-//        }
-//
-//        // 验证工具名称是否为有效标识符
-//        if (response.getToolName() != null && !isValidIdentifier(response.getToolName())) {
-//            errors.add("工具名称不合法: " + response.getToolName());
-//        }
-//
-//        if (!errors.isEmpty()) {
-//            String error = String.join(", ", errors);
-//            String correction = buildActionCorrectionPrompt(response, error);
-//            return ValidationResult.error(error, correction);
-//        }
-//
-//        return ValidationResult.ok();
-//    }
-
     /**
-     * 验证 ToolCall（新版，直接验证结构化工具调用）
+     * 验证 ToolCall
      */
     public ValidationResult validateToolCall(ToolCall toolCall) {
         List<String> errors = new ArrayList<>();
@@ -116,47 +86,9 @@ public class ResponseValidator {
         return ValidationResult.ok();
     }
 
-    /**
-     * 验证JSON格式的参数是否有效
-     */
-    public ValidationResult validateJsonParams(String params) {
-        if (params == null || params.isBlank()) {
-            return ValidationResult.ok(); // 空参数是允许的
-        }
-
-        try {
-            com.alibaba.fastjson2.JSON.parseObject(params);
-            return ValidationResult.ok();
-        } catch (Exception e) {
-            return ValidationResult.error(
-                    "参数不是有效的JSON: " + e.getMessage(),
-                    "请将参数改为有效的JSON格式，例如: {\"query\": \"value\"}"
-            );
-        }
-    }
-
     private boolean isValidIdentifier(String name) {
         // 允许字母、数字、下划线，以及MCP工具的server::tool格式
         return name.matches("^\\w+$") || name.matches("^\\w+::\\w+$");
-    }
-
-    private String buildActionCorrectionPrompt(StructuredResponse response, String error) {
-        return String.format("""
-            您的响应格式不正确: %s
-
-            请严格按照以下格式输出（注意使用英文冒号和方括号）：
-
-            Thought: <您的思考过程>
-            Action: <工具名称>[<JSON格式的参数>]
-
-            示例：
-            Thought: 用户询问的是订单问题，我需要先查询订单信息
-            Action: ticket_query[{"ticket_id": "12345"}]
-
-            或者直接输出最终答案：
-            Thought: <您的思考过程>
-            Final Answer: <您的最终回答>
-            """, error);
     }
 
     private String buildToolCallCorrectionPrompt(ToolCall toolCall, String error) {

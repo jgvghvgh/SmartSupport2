@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,7 +20,6 @@ import java.util.regex.Pattern;
  * 结构化ReAct执行器（Tool Calling 版本）
  *
  * 架构升级：
- * - 移除 ParserChain / RegexResponseParser / JsonResponseParser
  * - 改用 LLM 原生 Function Calling，直接获取结构化 toolName + arguments
  * - 保留 ResponseValidator（验证工具调用和最终答案）
  * - 保留 AgentContext trace 机制
@@ -65,7 +63,7 @@ public class StructuredReactExecutor {
         // 生成 Tool Schemas
         ToolSchemas toolSchemas = toolFactory.generateToolSchemas();
 
-        // 系统提示（简化版，因为有 tool schemas 不需要详细格式说明）
+        // 系统提示
         String systemPrompt = buildSystemPrompt();
         messages.add(Message.builder().role("system").content(systemPrompt).build());
         context.recordMessage("system", systemPrompt);
@@ -98,36 +96,13 @@ public class StructuredReactExecutor {
                     }
                 }
             } else {
-                // LLM 返回文本（可能是最终答案或需要修正）
+                // LLM 返回非 tool calling 文本，当作错误处理
                 String text = llmResult.text();
-                log.debug("LLM文本回复: {}", text);
-                context.recordMessage("assistant", text);
-
-                // 检查是否是最终答案格式
-                Optional<StructuredResponse> parsed = parseTextResponse(text);
-                if (parsed.isPresent()) {
-                    StructuredResponse response = parsed.get();
-
-                    if (response.getType() == StructuredResponse.ResponseType.FINAL_ANSWER) {
-                        AiAnalysisResult result = finishWithAnswer(response, context, step);
-                        if (result != null) {
-                            // 写入答案缓存（第二层缓存）
-                            answerCacheService.set(cacheKey, result);
-                            return result;
-                        }
-                    } else {
-                        // 格式不对，发送修正提示
-                        messages.add(Message.builder().role("assistant").content(text).build());
-                        messages.add(Message.ofUser(response.getErrorMessage()));
-                        context.recordMessage("user", response.getErrorMessage());
-                    }
-                } else {
-                    // 无法识别格式，当作错误处理
-                    messages.add(Message.builder().role("assistant").content(text).build());
-                    String correction = "请使用工具调用或直接给出最终答案，不要输出其他格式。";
-                    messages.add(Message.ofUser(correction));
-                    context.recordMessage("user", correction);
-                }
+                log.warn("LLM未返回tool call: {}", text);
+                messages.add(Message.builder().role("assistant").content(text).build());
+                String correction = "请使用工具调用来回答问题。";
+                messages.add(Message.ofUser(correction));
+                context.recordMessage("user", correction);
             }
         }
 
@@ -216,54 +191,6 @@ public class StructuredReactExecutor {
             }
         }
         return null;
-    }
-
-    /**
-     * 处理最终答案
-     * @return 如果验证通过返回 AiAnalysisResult，否则返回 null 让循环继续
-     */
-    private AiAnalysisResult finishWithAnswer(StructuredResponse response, AgentContext context, int step) {
-        context.addTrace("Step " + step + ": Final Answer: " + response.getFinalAnswer());
-        context.setFinished(true);
-        context.setFinalAnswer(response.getFinalAnswer());
-
-        // 验证最终答案
-        ResponseValidator.ValidationResult validation = validator.validateFinalAnswer(response);
-        if (!validation.isValid()) {
-            log.warn("最终答案验证失败: {}", validation.getErrorMessage());
-            // 发送修正提示，让 LLM 重新回答
-            return null;
-        }
-
-        return parseFinalAnswer(response.getFinalAnswer());
-    }
-
-    /**
-     * 解析文本响应（处理非 tool calling 模式的文本）
-     */
-    private Optional<StructuredResponse> parseTextResponse(String text) {
-        if (text == null || text.isBlank()) {
-            return Optional.empty();
-        }
-
-        // 检查是否是最终答案格式
-        if (text.contains("Final Answer") || text.contains("最终答案")) {
-            String thought = "";
-            String answer = text;
-
-            int thoughtIdx = text.indexOf("Thought:");
-            int answerIdx = text.indexOf("Final Answer:");
-            if (thoughtIdx >= 0 && answerIdx > thoughtIdx) {
-                thought = text.substring(thoughtIdx + 8, answerIdx).trim();
-                answer = text.substring(answerIdx + 13).trim();
-            }
-
-            if (answer.length() > 5) {
-                return Optional.of(StructuredResponse.finalAnswer(thought, answer, text));
-            }
-        }
-
-        return Optional.of(StructuredResponse.parseError("无法识别的响应格式", text));
     }
 
     /**
