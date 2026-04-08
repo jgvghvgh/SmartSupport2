@@ -42,5 +42,23 @@ public class AIConfig {
      */
     private Double temperature = 0.7;
 
+    /**
+     * Rerank API地址
+     * 阿里云DashScope: https://dashscope.aliyuncs.com/api/v1/services/rerank/rerank
+     * 或本地部署的BGE-Reranker服务
+     */
+    private String rerankApiUrl;
+
+    /**
+     * Rerank模型名称
+     * 阿里云: qwen2-reranker-7b-gemini-v1
+     * BGE: bge-reranker-v2-m3
+     */
+    private String rerankModel;
+
+    /**
+     * Rerank返回的topN数量
+     */
+    private Integer rerankTopN = 5;
 
 }

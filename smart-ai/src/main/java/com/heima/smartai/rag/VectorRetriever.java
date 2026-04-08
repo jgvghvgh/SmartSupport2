@@ -50,7 +50,7 @@ public class VectorRetriever {
 
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(embedding)
-                .maxResults(3)
+                .maxResults(20)
                 .build();
 
         // 3 向量检索

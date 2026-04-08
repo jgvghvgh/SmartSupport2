@@ -5,9 +5,8 @@ import com.heima.smartai.agent.core.SimpleTool;
 import com.heima.smartai.model.AiAnalysisResult;
 import com.heima.smartai.model.Message;
 import com.heima.smartai.rag.PromptBuilder;
-import com.heima.smartai.rag.QueryRewriteService;
-import com.heima.smartai.rag.RerankService;
-import com.heima.smartai.rag.VectorRetriever;
+import com.heima.smartai.rag.MultiRetrievalService;
+import com.heima.smartai.rag.BgeRerankService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -24,13 +23,10 @@ import java.util.Map;
 public class KnowledgeBaseTool implements SimpleTool {
 
     @Autowired
-    private QueryRewriteService queryRewriteService;
+    private MultiRetrievalService multiRetrievalService;
 
     @Autowired
-    private VectorRetriever vectorRetriever;
-
-    @Autowired
-    private RerankService rerankService;
+    private BgeRerankService bgeRerankService;
 
     @Autowired
     private AiClient aiClient;
@@ -92,23 +88,20 @@ public class KnowledgeBaseTool implements SimpleTool {
         String imageAnalysisResult = (String) args.getOrDefault("imageAnalysisResult", "");
 
         try {
-            // 1 Query Rewrite
-            String rewriteQuery = queryRewriteService.rewrite(question);
+            // 1. 多路召回（原始Query + Query改写 + HyDE假设答案）
+            List<String> candidates = multiRetrievalService.multiSearch(question);
 
-            // 2 Vector Search
-            List<String> docs = vectorRetriever.search(rewriteQuery);
+            // 2. BGE-Rerank重排序
+            List<String> topDocs = bgeRerankService.rerank(question, candidates, 5);
 
-            // 3 Rerank
-            List<String> topDocs = rerankService.rerank(rewriteQuery, docs);
-
-            // 4 Build Prompt
+            // 3. 构建Prompt
             String prompt = PromptBuilder.build(question, topDocs, imageAnalysisResult);
 
-            // 5 AI Chat
+            // 4. AI Chat
             Message msg = Message.ofUser(prompt);
             String aiText = aiClient.chat(List.of(msg));
 
-            // 6 Parse Response
+            // 5. Parse Response
             AiAnalysisResult result = aiClient.parseResponse(aiText);
 
             return ToolResult.ok(result.toString());
