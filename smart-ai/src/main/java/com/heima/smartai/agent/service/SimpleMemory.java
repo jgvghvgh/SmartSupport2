@@ -1,7 +1,7 @@
 package com.heima.smartai.agent.service;
 
-import com.heima.smartai.entity.AgentChatMessage;
-import com.heima.smartai.mapper.AgentChatMessageMapper;
+import com.heima.smartai.entity.TicketMessage;
+import com.heima.smartai.mapper.TicketMessageMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,46 +14,70 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * 对话记忆 - Redis + 数据库双写双读兜底
+ * 对话记忆服务 - Redis + 数据库两层缓存
  *
- * 读：优先Redis，Redis无数据则查数据库
- * 写：双写，Redis + 数据库
+ * 读：优先 Redis，Redis 无数据则查数据库
+ * 写：双写，Redis（短期记忆）+ 数据库（持久化）
+ *
+ * Redis 只缓存最近的 N 条，数据库保存完整历史
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SimpleMemory {
 
-    private static final String PREFIX = "agent:memory:";
+    private static final String REDIS_KEY_PREFIX = "agent:memory:";
     private static final long REDIS_EXPIRE_HOURS = 24;
-    private static final int MAX_REDIS_HISTORY = 20;
+    /** Redis 缓存的最大消息条数（双向各 N 条 = 共 2N 条） */
+    private static final int MAX_REDIS_MESSAGES = 20;
 
     private final StringRedisTemplate redisTemplate;
-    private final AgentChatMessageMapper chatMessageMapper;
+    private final TicketMessageMapper ticketMessageMapper;
 
-    public void addUserMessage(String ticketId, String message) {
-        addMessage(ticketId, "user", message);
-    }
 
-    public void addAssistantMessage(String ticketId, String message) {
-        addMessage(ticketId, "assistant", message);
+
+    /**
+     * 添加用户消息
+     */
+    public void addUserMessage(Long ticketId, String content) {
+        addMessage(ticketId, TicketMessage.SENDER_USER, content, false);
     }
 
     /**
-     * 获取对话历史 - 优先Redis，兜底数据库
+     * 添加助手消息
      */
-    public List<ChatMessage> getHistory(String ticketId) {
-        // 1. 尝试从Redis获取
-        List<ChatMessage> redisHistory = getHistoryFromRedis(ticketId);
+    public void addAssistantMessage(Long ticketId, String content) {
+        addMessage(ticketId, TicketMessage.SENDER_AI, content, true);
+    }
+
+    /**
+     * 添加任意类型消息
+     * @param ticketId 工单ID
+     * @param role 角色：user / assistant / observation / system
+     * @param content 消息内容
+     */
+    public void addMessage(Long ticketId, String role, String content) {
+        String senderType = TicketMessage.toSenderType(role);
+        boolean isAi = TicketMessage.isAiMessage(role);
+        addMessage(ticketId, senderType, content, isAi);
+    }
+
+    /**
+     * 获取对话历史（合并 Redis + 数据库，Redis 优先）
+     * @return 按时间正序排列的消息列表
+     */
+    public List<ChatMessage> getHistory(Long ticketId) {
+        // 1. 优先从 Redis 获取
+        List<ChatMessage> redisHistory = getFromRedis(ticketId);
         if (!redisHistory.isEmpty()) {
             return redisHistory;
         }
 
-        // 2. Redis没有，查数据库
-        List<ChatMessage> dbHistory = getHistoryFromDb(ticketId);
+        // 2. Redis 没有，查数据库
+        List<ChatMessage> dbHistory = getFromDb(ticketId);
         if (!dbHistory.isEmpty()) {
-            // 3. 回填Redis
-            fillRedisFromDb(ticketId, dbHistory);
+            // 3. 回填 Redis
+            fillRedis(ticketId, dbHistory);
             return dbHistory;
         }
 
@@ -61,102 +85,89 @@ public class SimpleMemory {
     }
 
     /**
-     * 清空对话历史（Redis + 数据库）
+     * 判断是否是新对话（Redis + 数据库都无数据）
      */
-    public void clear(String ticketId) {
-        redisTemplate.delete(PREFIX + ticketId);
-        try {
-            chatMessageMapper.deleteByTicketId(ticketId);
-        } catch (Exception e) {
-            log.warn("清空数据库历史失败, ticketId={}", ticketId, e);
+    public boolean isNewConversation(Long ticketId) {
+        if (!getFromRedis(ticketId).isEmpty()) {
+            return false;
         }
+        return ticketMessageMapper.countByTicketId(ticketId) == 0;
     }
 
     /**
-     * 格式化对话历史为字符串
+     * 格式化对话历史为字符串（用于注入 LLM 上下文）
      */
-    public String getFormattedHistory(String ticketId) {
+    public String getFormattedHistory(Long ticketId) {
         List<ChatMessage> history = getHistory(ticketId);
         if (history.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
         for (ChatMessage msg : history) {
-            String role = "user".equals(msg.role) ? "用户" : "助手";
+            String role = TicketMessage.SENDER_USER.equals(msg.senderType()) ? "用户" : "助手";
             sb.append(role).append("：").append(msg.content()).append("\n");
         }
         return sb.toString();
     }
 
     /**
-     * 判断是否是新对话（Redis + 数据库都无数据）
+     * 清空对话历史（Redis + 数据库）
      */
-    public boolean isNewConversation(String ticketId) {
-        // 先查Redis
-        if (!getHistoryFromRedis(ticketId).isEmpty()) {
-            return false;
-        }
-        // 再查数据库
-        return chatMessageMapper.countByTicketId(ticketId) == 0;
-    }
-
-    /**
-     * 获取历史记录数量（Redis + 数据库合并计算）
-     */
-    public int getHistoryCount(String ticketId) {
-        int redisCount = getHistoryFromRedis(ticketId).size();
-        if (redisCount >= MAX_REDIS_HISTORY) {
-            return redisCount;
-        }
-        Long dbCount = chatMessageMapper.countByTicketId(ticketId);
-        return Math.max(redisCount, dbCount.intValue());
-    }
-
-    // ==================== 私有方法 ====================
-
-    private void addMessage(String ticketId, String role, String content) {
-        // 1. 先写数据库（持久化）
-        saveToDb(ticketId, role, content);
-
-        // 2. 再更新Redis
-        addToRedis(ticketId, role, content);
-    }
-
-    private void saveToDb(String ticketId, String role, String content) {
+    public void clear(Long ticketId) {
+        redisTemplate.delete(REDIS_KEY_PREFIX + ticketId);
         try {
-            AgentChatMessage message = AgentChatMessage.builder()
+            ticketMessageMapper.deleteByTicketId(ticketId);
+        } catch (Exception e) {
+            log.warn("清空数据库历史失败, ticketId={}", ticketId, e);
+        }
+    }
+
+    // ==================== 内部实现 ====================
+
+    private void addMessage(Long ticketId, String senderType, String content, boolean isAi) {
+        // 1. 先写数据库（持久化）
+        saveToDb(ticketId, senderType, content, isAi);
+        // 2. 再更新 Redis（短期缓存）
+        addToRedis(ticketId, senderType, content, isAi);
+    }
+
+    private void saveToDb(Long ticketId, String senderType, String content, boolean isAi) {
+        try {
+            TicketMessage message = TicketMessage.builder()
                     .ticketId(ticketId)
-                    .role(role)
+                    .senderType(senderType)
                     .content(content)
+                    .isAi(isAi)
                     .createdAt(LocalDateTime.now())
                     .build();
-            chatMessageMapper.insert(message);
+            ticketMessageMapper.insert(message);
         } catch (Exception e) {
-            log.error("保存对话历史到数据库失败, ticketId={}, role={}", ticketId, role, e);
+            log.error("保存消息到数据库失败, ticketId={}", ticketId, e);
         }
     }
 
-    private void addToRedis(String ticketId, String role, String content) {
+    private void addToRedis(Long ticketId, String senderType, String content, boolean isAi) {
         try {
-            String key = PREFIX + ticketId;
-            List<ChatMessage> history = getHistoryFromRedis(ticketId);
-            history.add(new ChatMessage(role, content, System.currentTimeMillis()));
+            String key = REDIS_KEY_PREFIX + ticketId;
+            List<ChatMessage> history = getFromRedis(ticketId);
 
-            // 限制Redis中的条数
-            if (history.size() > MAX_REDIS_HISTORY) {
-                history = history.subList(history.size() - MAX_REDIS_HISTORY, history.size());
+            history.add(new ChatMessage(senderType, content, isAi, System.currentTimeMillis()));
+
+            // 限制 Redis 条数（保留最近 MAX_REDIS_MESSAGES 条）
+            if (history.size() > MAX_REDIS_MESSAGES) {
+                history = history.subList(history.size() - MAX_REDIS_MESSAGES, history.size());
             }
 
             String json = com.alibaba.fastjson2.JSON.toJSONString(history);
             redisTemplate.opsForValue().set(key, json, REDIS_EXPIRE_HOURS, TimeUnit.HOURS);
         } catch (Exception e) {
-            log.error("更新Redis对话历史失败, ticketId={}, role={}", ticketId, role, e);
+            log.error("更新Redis记忆失败, ticketId={}", ticketId, e);
         }
     }
 
-    private List<ChatMessage> getHistoryFromRedis(String ticketId) {
+    private List<ChatMessage> getFromRedis(Long ticketId) {
         try {
-            String key = PREFIX + ticketId;
+            String key = REDIS_KEY_PREFIX + ticketId;
             String json = redisTemplate.opsForValue().get(key);
             if (json == null || json.isBlank()) {
                 return new ArrayList<>();
@@ -168,11 +179,14 @@ public class SimpleMemory {
         }
     }
 
-    private List<ChatMessage> getHistoryFromDb(String ticketId) {
+    private List<ChatMessage> getFromDb(Long ticketId) {
         try {
-            List<AgentChatMessage> dbMessages = chatMessageMapper.findByTicketId(ticketId);
+            List<TicketMessage> dbMessages = ticketMessageMapper.findByTicketId(ticketId);
             return dbMessages.stream()
-                    .map(m -> new ChatMessage(m.getRole(), m.getContent(),
+                    .map(m -> new ChatMessage(
+                            m.getSenderType(),
+                            m.getContent(),
+                            m.getIsAi(),
                             m.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()))
                     .collect(Collectors.toList());
         } catch (Exception e) {
@@ -181,14 +195,14 @@ public class SimpleMemory {
         }
     }
 
-    private void fillRedisFromDb(String ticketId, List<ChatMessage> dbHistory) {
+    private void fillRedis(Long ticketId, List<ChatMessage> dbHistory) {
         try {
-            // 只取最近的MAX_REDIS_HISTORY条回填Redis
-            List<ChatMessage> toCache = dbHistory.size() > MAX_REDIS_HISTORY
-                    ? dbHistory.subList(dbHistory.size() - MAX_REDIS_HISTORY, dbHistory.size())
+            // 只缓存最近的 MAX_REDIS_MESSAGES 条
+            List<ChatMessage> toCache = dbHistory.size() > MAX_REDIS_MESSAGES
+                    ? dbHistory.subList(dbHistory.size() - MAX_REDIS_MESSAGES, dbHistory.size())
                     : dbHistory;
 
-            String key = PREFIX + ticketId;
+            String key = REDIS_KEY_PREFIX + ticketId;
             String json = com.alibaba.fastjson2.JSON.toJSONString(toCache);
             redisTemplate.opsForValue().set(key, json, REDIS_EXPIRE_HOURS, TimeUnit.HOURS);
         } catch (Exception e) {
@@ -196,5 +210,8 @@ public class SimpleMemory {
         }
     }
 
-    public record ChatMessage(String role, String content, long timestamp) {}
+    /**
+     * 对话消息记录
+     */
+    public record ChatMessage(String senderType, String content, boolean isAi, long timestamp) {}
 }

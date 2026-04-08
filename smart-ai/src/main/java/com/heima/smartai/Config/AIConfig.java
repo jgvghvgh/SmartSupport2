@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 public class AIConfig {
 
     /**
-     * AI 提供商，例如 qianwen / openai
+     * AI 提供商
      */
     private String provider;
 

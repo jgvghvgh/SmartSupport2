@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 工具工厂 - 管理所有可用工具（本地 + 外部MCP）
@@ -20,6 +21,7 @@ public class ToolFactory {
     private final ImageRecognitionTool imageRecognitionTool;
     private final IntentClassifyTool intentClassifyTool;
     private final DirectChatTool directChatTool;
+    private final KnowledgeBaseTool knowledgeBaseTool;
     private final McpClientManager mcpClientManager;
 
     /**
@@ -31,7 +33,8 @@ public class ToolFactory {
                 ticketQueryTool,
                 imageRecognitionTool,
                 intentClassifyTool,
-                directChatTool
+                directChatTool,
+                knowledgeBaseTool
         );
     }
 
@@ -52,34 +55,48 @@ public class ToolFactory {
             case "image_recognition" -> imageRecognitionTool;
             case "intent_classify" -> intentClassifyTool;
             case "direct_chat" -> directChatTool;
+            case "kb_search" -> knowledgeBaseTool;
             default -> null;
         };
     }
 
+    //Tool Schema 生成（用于 LLM Function Calling）
+
     /**
-     * 生成工具定义的Prompt片段（包含本地 + 外部MCP）
+     * 生成工具 Schema 列表
+     * 用于 LLM Function Calling 模式
+     *
+     * 每个工具的 description 和 parameters 都从工具类自身获取
      */
-    public String generateToolDefinitions() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("你可以使用以下工具：\n\n");
+    public ToolSchemas generateToolSchemas() {
+        List<ToolSchemas.ToolSchema> schemas = new ArrayList<>();
 
-        // 本地工具
+        // 本地工具 - 从每个工具类获取 description 和 parameters
         for (SimpleTool tool : getLocalTools()) {
-            sb.append("## ").append(tool.name()).append("\n");
-            sb.append(tool.description()).append("\n\n");
+            schemas.add(buildSchema(tool.name(), tool.description(), tool.parameters()));
         }
 
-        // 外部MCP工具
+        // 外部 MCP 工具
         List<McpClientManager.ExternalMcpTool> externalTools = mcpClientManager.getAllExternalTools();
-        if (!externalTools.isEmpty()) {
-            sb.append("## 外部工具\n");
-            for (McpClientManager.ExternalMcpTool tool : externalTools) {
-                sb.append("- ").append(tool.fullName())
-                        .append(": ").append(tool.description()).append("\n");
-            }
-            sb.append("\n外部工具格式: serverName::toolName，例如: filesystem::read_file\n\n");
+        for (McpClientManager.ExternalMcpTool tool : externalTools) {
+            schemas.add(buildSchema(
+                    tool.fullName(),
+                    tool.description(),
+                    Map.of("type", "object", "properties", Map.of())
+            ));
         }
 
-        return sb.toString();
+        return ToolSchemas.builder().tools(schemas).build();
+    }
+
+    private ToolSchemas.ToolSchema buildSchema(String name, String description, Map<String, Object> parameters) {
+        return ToolSchemas.ToolSchema.builder()
+                .type("function")
+                .function(ToolSchemas.ToolSchema.Function.builder()
+                        .name(name)
+                        .description(description)
+                        .parameters(parameters)
+                        .build())
+                .build();
     }
 }

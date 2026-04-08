@@ -11,6 +11,7 @@ import java.util.Map;
 
 /**
  * 直接对话工具（兜底）
+ * 当其他工具都不适用时，使用 AI 通用能力回答
  */
 @Component
 @RequiredArgsConstructor
@@ -25,7 +26,46 @@ public class DirectChatTool implements SimpleTool {
 
     @Override
     public String description() {
-        return "当用户问题不属于知识库范畴，或需要AI基于通用知识回答时使用（兜底工具）。参数：question(必填), context(可选，上下文信息)";
+        return """
+            直接与 AI 对话，使用通用知识回答用户问题（兜底工具）。
+
+            【使用场景】
+            - 用户问题不属于知识库范畴（如闲聊、问候、通用咨询）
+            - 所有检索工具都无法找到相关信息
+            - 需要 AI 基于通用知识（非知识库）来回答
+            - 用户明确要求 AI 直接回答而不需要检索
+
+            【与 kb_search 的区别】
+            - kb_search：从知识库检索内容后 AI 整合回答
+            - direct_chat：直接调用 AI 通用能力，不检索知识库
+
+            【返回内容】
+            - AI 直接生成的回答
+            - 通常包含问题分析和解决建议
+
+            【使用建议】
+            - 这是兜底工具，其他工具优先
+            - 当不确定用什么工具时，可以先用 intent_classify 判断
+            - 如果知识库检索结果不满意，最后可以用这个工具获得 AI 通用回答
+            """;
+    }
+
+    @Override
+    public Map<String, Object> parameters() {
+        return Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "question", Map.of(
+                                "type", "string",
+                                "description", "用户的完整问题"
+                        ),
+                        "context", Map.of(
+                                "type", "string",
+                                "description", "上下文信息（可选），如之前的对话内容、工单信息等，帮助AI更好地理解问题"
+                        )
+                ),
+                "required", java.util.List.of("question")
+        );
     }
 
     @Override
