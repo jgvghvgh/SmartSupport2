@@ -1,7 +1,7 @@
 package com.heima.smartai.AiService;
 
+import com.heima.smartai.rag.SemanticChunker;
 import dev.langchain4j.data.document.Document;
-import dev.langchain4j.data.document.splitter.DocumentSplitters;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -24,22 +24,26 @@ public class KnowledgeImportService {
     @Autowired
     EmbeddingModel embeddingModel;
 
+    @Autowired
+    SemanticChunker semanticChunker;
+
     /**
      * 导入知识文本到向量库
+     *
      * @param text 知识文本
      * @return 导入的文档 ID 列表
      */
     public List<String> importDoc(String text) {
-        // 1 文档切分
-        List<TextSegment> segments = DocumentSplitters.recursive(500, 100)
-                .split(Document.from(text));
+        // 1 语义切分（保护语义完整性 + 重叠兜底）
+        Document document = Document.from(text);
+        List<TextSegment> segments = semanticChunker.chunk(document);
 
         // 2 embedding
         List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
 
         // 3 存入向量库
         List<String> ids = store.addAll(embeddings, segments);
-        log.info("知识导入完成，条数={}", ids.size());
+        log.info("知识导入完成，切分块数={}, 向量ID数={}", segments.size(), ids.size());
         return ids;
     }
 
