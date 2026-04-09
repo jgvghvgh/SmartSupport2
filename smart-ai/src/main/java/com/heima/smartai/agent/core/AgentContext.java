@@ -20,6 +20,8 @@ public class AgentContext {
     private int maxSteps;
     private boolean finished;
     private String finalAnswer;
+    /** 最后一次工具执行的观察结果，用于兜底答案生成 */
+    private String lastObservation;
     @Builder.Default
     private List<String> trace = new ArrayList<>();
 
