@@ -1,7 +1,8 @@
 package com.heima.smartai.rag;
 
-import com.github.gzuliy.jieba.JiebaSegmenter;
-import com.github.gzuliy.jieba.SegToken;
+import com.heima.smartai.mapper.KnowledgeMapper;
+import com.huaban.analysis.jieba.JiebaSegmenter;
+import com.huaban.analysis.jieba.SegToken;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -116,7 +117,7 @@ public class Bm25Service {
         if (text == null || text.isBlank()) {
             return Collections.emptyList();
         }
-        List<SegToken> tokens = segmenter.process(text, JiebaSegmenter.Mode.INDEX);
+        List<SegToken> tokens = segmenter.process(text, JiebaSegmenter.SegMode.INDEX);
         return tokens.stream()
                 .map(token -> token.word)
                 .filter(word -> word.length() > 1)  // 过滤单字

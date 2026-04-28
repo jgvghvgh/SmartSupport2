@@ -110,9 +110,9 @@
         </dependency>
         <!-- Jieba中文分词 -->
         <dependency>
-            <groupId>io.github.gzuliy</groupId>
+            <groupId>com.huaban</groupId>
             <artifactId>jieba-analysis</artifactId>
-            <version>1.0.0</version>
+            <version>1.0.2</version>
         </dependency>
     </dependencies>
 
