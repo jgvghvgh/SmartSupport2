@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "ticket-service") // ticket模块在注册中心的服务名
+@FeignClient(name = "ticket-service", fallback = TicketRemoteClientFallback.class)
 public interface TicketRemoteClient {
 
     @GetMapping("/api/ticket/GetTicketDetails")

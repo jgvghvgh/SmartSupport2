@@ -3,6 +3,7 @@ package com.heima.smartai.intent;
 import com.heima.smartai.Config.AiClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
@@ -21,8 +22,47 @@ public class IntentClassifierService {
     private static final String CACHE_PREFIX = "ai:intent:cache:v1:";
     private static final String RATE_PREFIX = "ai:intent:rate:";
 
-    // 分类调用限流：每分钟最多次数
-    private static final long MAX_PER_MINUTE = 5;
+    // 令牌桶限流参数
+    private static final long TOKEN_BUCKET_CAPACITY = 5;   // 桶容量（最大突发）
+    private static final long TOKEN_REFILL_RATE = 5;       // 每秒补充令牌数
+    private static final long TOKEN_TTL_SECONDS = 60;      // Redis key 过期时间
+
+    // 令牌桶 Lua 脚本
+    private static final String TOKEN_BUCKET_SCRIPT = """
+        local key = KEYS[1]
+        local capacity = tonumber(ARGV[1])
+        local refillRate = tonumber(ARGV[2])
+        local now = tonumber(ARGV[3])
+        local requested = 1
+
+        local bucket = redis.call('HMGET', key, 'tokens', 'lastRefill')
+        local tokens = tonumber(bucket[1])
+        local lastRefill = tonumber(bucket[2])
+
+        -- 初始化桶
+        if tokens == nil then
+            tokens = capacity
+            lastRefill = now
+        end
+
+        -- 计算应补充的令牌数
+        local elapsed = now - lastRefill
+        local tokensToAdd = elapsed * refillRate
+        tokens = math.min(capacity, tokens + tokensToAdd)
+        lastRefill = now
+
+        -- 尝试获取令牌
+        local allowed = 0
+        if tokens >= requested then
+            tokens = tokens - requested
+            allowed = 1
+        end
+
+        redis.call('HMSET', key, 'tokens', tokens, 'lastRefill', lastRefill)
+        redis.call('EXPIRE', key, tonumber(ARGV[4]))
+
+        return allowed
+        """;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -44,8 +84,8 @@ public class IntentClassifierService {
             return IntentResult.fromCached(cachedIntent);
         }
 
-        // 限流（按用户维度）
-        if (!tryAcquire(userId)) {
+        // 令牌桶限流（按用户维度）
+        if (!tryAcquireTokenBucket(userId)) {
             return IntentResult.fail("rate limited");
         }
 
@@ -83,16 +123,29 @@ public class IntentClassifierService {
         return result;
     }
 
-    private boolean tryAcquire(String userId) {
+    /**
+     * 令牌桶限流实现
+     * @param userId 用户ID
+     * @return true=获取令牌成功（允许通过），false=限流
+     */
+    private boolean tryAcquireTokenBucket(String userId) {
         if (userId == null || userId.isBlank()) {
             return false;
         }
-        String key = RATE_PREFIX + userId;
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1L) {
-            redisTemplate.expire(key, 60, TimeUnit.SECONDS);
-        }
-        return count != null && count <= MAX_PER_MINUTE;
+        String key = RATE_PREFIX + userId + ":bucket";
+
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(TOKEN_BUCKET_SCRIPT, Long.class);
+
+        Long result = redisTemplate.execute(
+                script,
+                List.of(key),
+                TOKEN_BUCKET_CAPACITY,
+                TOKEN_REFILL_RATE,
+                System.currentTimeMillis(),
+                TOKEN_TTL_SECONDS
+        );
+
+        return result != null && result == 1L;
     }
 
     private IntentResult parse(String raw) {
@@ -152,4 +205,3 @@ public class IntentClassifierService {
         }
     }
 }
-

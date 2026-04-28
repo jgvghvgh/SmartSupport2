@@ -11,7 +11,6 @@ import com.heima.smartcommon.Result.PageResult;
 import com.heima.smartcommon.VO.TicketCreateVO;
 import com.heima.smartcommon.enums.TicketStatus;
 import com.heima.smartcommon.enums.TicketStateMachine;
-import com.heima.smartticket.MQ.FirstUserMessageEvent;
 import com.heima.smartticket.MQ.CommentCreatedEvent;
 import com.heima.smartticket.Mapper.CommonUserMapper;
 import com.heima.smartticket.Mapper.OutboxMessageMapper;
@@ -20,6 +19,8 @@ import com.heima.smartticket.Mapper.TicketMessageMapper;
 import com.heima.smartticket.Service.TicketService;
 import com.heima.smartticket.Service.NotificationService;
 import com.heima.smartticket.Utils.TencentCosUtil;
+import com.heima.smartticket.client.AiAnalysisResultResponse;
+import com.heima.smartticket.client.AiRemoteClient;
 import com.heima.smartticket.entity.*;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +58,8 @@ public class TicketServiceImpl implements TicketService {
     private RedisTemplate redisTemplate;
     @Autowired
     private NotificationService notificationService;
+    @Autowired
+    private AiRemoteClient aiRemoteClient;
     private final ApplicationEventPublisher eventPublisher;
 
     public TicketServiceImpl(ApplicationEventPublisher eventPublisher) {
@@ -85,8 +88,20 @@ public class TicketServiceImpl implements TicketService {
         ticket.setStatus(TicketStatus.NEW.name());
         Long id = ticketMapper.insert(ticket);
         TicketContext.setTicketId(id);
-        return CommonResult.success(id);
 
+        // description 作为工单的首条聊天消息入库
+        TicketMessage firstMsg = new TicketMessage();
+        firstMsg.setTicketId(id);
+        firstMsg.setSenderId(ticketCreateDTO.getUserId());
+        firstMsg.setSenderType("USER");
+        firstMsg.setContent(ticketCreateDTO.getDescription());
+        firstMsg.setIsAi((short) 0);
+        ticketMessageMapper.insert(firstMsg);
+
+        // 直接调用 AI 生成首次回复
+        doAiAutoReply(id, ticketCreateDTO.getDescription(), null, null);
+
+        return CommonResult.success(id);
     }
 
     @Override
@@ -123,14 +138,6 @@ public class TicketServiceImpl implements TicketService {
             throw new BusinessException("工单不存在");
         }
 
-        // B：用户首次 addMessage 发消息时触发 AI 自动回复
-        Long msgCount = ticketMessageMapper.countByTicketId(ticketMessage.getTicketId());
-        boolean isFirstUserMessage =
-                msgCount != null
-                        && msgCount == 0
-                        && ticketMessage.getSenderId() != null
-                        && ticketMessage.getSenderId().equals(ticket.getUserId());
-
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String role = authentication.getAuthorities()
                 .stream()
@@ -144,7 +151,6 @@ public class TicketServiceImpl implements TicketService {
         try {
             if (role != null) {
                 String senderType = role;
-                // 将ADMIN也视为AGENT进行状态更新
                 if ("ADMIN".equalsIgnoreCase(senderType)) {
                     senderType = "AGENT";
                 }
@@ -152,35 +158,23 @@ public class TicketServiceImpl implements TicketService {
             }
         } catch (Exception e) {
             log.warn("自动更新工单状态失败: {}", e.getMessage());
-            // 不抛出异常，避免影响主流程
-        }
-
-        if (isFirstUserMessage) {
-            eventPublisher.publishEvent(
-                    new FirstUserMessageEvent(this, ticketMessage.getTicketId(), ticketMessage.getContent(),
-                            ticketMessage.getImageUrl(), ticketMessage.getImageType())
-            );
         }
 
         // 双向消息推送：根据发送者角色推送给对方
         try {
             if (role != null) {
                 if (role.equalsIgnoreCase("USER")) {
-                    // 用户发送消息，推送给分配的客服
                     if (ticket.getAssigneeId() != null) {
                         notificationService.notifyAgent(ticket.getAssigneeId(),
                                 "用户[" + ticket.getUserId() + "] 发送新消息: " + ticketMessage.getContent());
                     }
                 } else if (role.equalsIgnoreCase("AGENT") || role.equalsIgnoreCase("ADMIN")) {
-                    // 客服或管理员发送消息，推送给用户
                     notificationService.notifyUser(ticket.getUserId(),
                             role.equalsIgnoreCase("ADMIN") ? "管理员" : "客服[" + ticketMessage.getSenderId() + "]"
                                     + " 回复: " + ticketMessage.getContent());
                 }
-
             }
         } catch (Exception e) {
-            // 推送失败不影响主流程
             log.warn("消息推送失败: {}", e.getMessage());
         }
 
@@ -433,16 +427,44 @@ public class TicketServiceImpl implements TicketService {
         return messageid.intValue();
     }
 
-    @Override
-    public CommonResult<Integer> saveAiMessage(Long ticketId, String content) {
-        TicketMessage message = new TicketMessage();
-        message.setTicketId(ticketId);
-        message.setSenderId(null);
-        message.setSenderType("AI");
-        message.setContent(content);
-        message.setIsAi((short) 1);
-        int messageId = addComment(message);
-        return CommonResult.success( messageId);
+    /**
+     * AI 自动回复：直接调用 AI，将回复入库并推送用户
+     * 在 submitTicket 时同步调用，description 作为首条消息触发 AI 回复
+     */
+    private void doAiAutoReply(Long ticketId, String userMessage, String imageUrl, String imageType) {
+        try {
+            AiAnalysisResultResponse resp = aiRemoteClient.chat(userMessage, String.valueOf(ticketId), imageUrl, imageType);
+            String aiReply = (resp == null || resp.getReferenceReply() == null)
+                    ? null : resp.getReferenceReply().trim();
+
+            if (aiReply == null || aiReply.isEmpty()) {
+                aiReply = "请客服补充/请重新描述";
+            }
+
+            // AI 消息入库，走 addComment 发 MQ 通知下游
+            TicketMessage aiMessage = new TicketMessage();
+            aiMessage.setTicketId(ticketId);
+            aiMessage.setSenderId(0L);
+            aiMessage.setSenderType("AI");
+            aiMessage.setContent(aiReply);
+            aiMessage.setIsAi((short) 1);
+            addComment(aiMessage);
+
+            // 自动更新工单状态
+            try {
+                updateStatusByBusinessAction(ticketId, "AI", aiReply);
+            } catch (Exception e) {
+                log.error("AI 回复后自动更新工单状态失败, ticketId={}, error={}", ticketId, e.getMessage());
+            }
+
+            // 推送给用户
+            Ticket ticket = ticketMapper.findById(ticketId);
+            if (ticket != null) {
+                notificationService.notifyUser(ticket.getUserId(), aiReply);
+            }
+        } catch (Exception e) {
+            log.error("AI 自动回复失败, ticketId={}, error={}", ticketId, e.getMessage(), e);
+        }
     }
 
     public Boolean Messageexists(Long messageid){

@@ -35,4 +35,15 @@ public interface KnowledgeMapper {
             @Param("topK") int topK
     );
 
+    /**
+     * 获取所有文档（用于BM25索引构建）
+     */
+    @Select("SELECT content FROM knowledge_base")
+    List<Bm25Document> getAllDocuments();
+
+    class Bm25Document {
+        private String content;
+        public String getContent() { return content; }
+        public void setContent(String content) { this.content = content; }
+    }
 }

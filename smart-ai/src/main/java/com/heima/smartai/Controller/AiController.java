@@ -21,4 +21,9 @@ public class AiController {
                                   @RequestParam(value = "imageType", required = false) String imageType) {
         return agentAiService.chat(message, ticketId, imageUrl, imageType);
     }
+    @PostMapping("/generateAssistantReply")
+    public AiAnalysisResult generateAssistantReply(@RequestParam("ticketId") String ticketId,
+                                                   @RequestParam("message") String message) {
+        return agentAiService.chat(message, ticketId, null, null);
+    }
 }

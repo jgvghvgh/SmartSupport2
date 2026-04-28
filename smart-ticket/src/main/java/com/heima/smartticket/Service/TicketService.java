@@ -17,8 +17,6 @@ public interface TicketService {
 
     CommonResult<Integer> addMessage(TicketMessageDTO ticketMessage);
 
-    CommonResult<Integer> saveAiMessage(Long ticketId, String content);
-
     CommonResult<String> Assign(Long ticketId);
 
     CommonResult<String> updateStatus(Long ticketId, String status);

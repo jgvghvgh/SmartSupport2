@@ -39,11 +39,6 @@ public class TicketController {
         return ticketService.addMessage(ticketMessage);
     }
 
-    @PostMapping("/saveAiMessage")
-    public CommonResult<Integer> saveAiMessage(@RequestParam Long ticketId, @RequestParam String content){
-        return ticketService.saveAiMessage(ticketId, content);
-    }
-
     @PutMapping("/Assign")
     public CommonResult<String> Assign(@RequestParam Long ticketId
                                   ){

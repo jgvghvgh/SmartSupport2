@@ -47,6 +47,13 @@ public class WebSocketUserRegistry {
     }
 
     /**
+     * 刷新路由表 TTL（心跳续期时调用）
+     */
+    public void refreshRoute(Long userId) {
+        redisTemplate.expire("ws:route:" + userId, 60, TimeUnit.SECONDS);
+    }
+
+    /**
      * 发送消息 - 支持分布式路由
      */
     public void sendMessage(Long userId, String message) {
